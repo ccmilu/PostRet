@@ -59,7 +59,7 @@ export const DEFAULT_SETTINGS: PostureSettings = {
     sensitivity: 0.5,
     rules: {
       forwardHead: true,
-      slouch: true,
+      slouch: false,
       headTilt: true,
       tooClose: true,
       shoulderAsymmetry: true,

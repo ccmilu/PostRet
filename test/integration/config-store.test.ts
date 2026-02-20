@@ -52,10 +52,10 @@ describe('ConfigStore', () => {
     expect(settings.detection.sensitivity).toBe(0.5)
   })
 
-  it('should have all rules enabled by default', () => {
+  it('should have correct default rule toggles', () => {
     const { rules } = store.getSettings().detection
     expect(rules.forwardHead).toBe(true)
-    expect(rules.slouch).toBe(true)
+    expect(rules.slouch).toBe(false) // disabled: front camera cannot reliably detect slouch
     expect(rules.headTilt).toBe(true)
     expect(rules.tooClose).toBe(true)
     expect(rules.shoulderAsymmetry).toBe(true)
