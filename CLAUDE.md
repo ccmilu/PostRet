@@ -45,7 +45,7 @@
   - `camera:permission` — renderer→main, 权限请求
   - `app:pause` / `app:resume` — main→renderer, 暂停/恢复检测
 - 完全本地处理，不上传任何图像/数据到云端
-- 屏幕角度自适应: faceY(0.5) + noseChinRatio(0.3) + eyeMouthRatio(0.2) 三信号加权估算摄像头俯仰角变化, 补偿系数 headForward×0.8 / torsoSlouch×0.5
+- 屏幕角度自适应: faceY(0.5) + noseChinRatio(0.3) + eyeMouthRatio(0.2) 三信号加权估算摄像头俯仰角变化, 补偿系数 headForward×0.8（torsoSlouch×0.5 暂不启用，待多摄像头支持）
 - 多屏幕检测: 鼠标位置(权重0.6) + 头部朝向(权重0.4) 融合判断, 1.5秒迟滞防抖
 - 自适应基准线: 良好姿态持续30秒后以学习率0.001漂移, 最大漂移5度
 
@@ -58,7 +58,7 @@
      ↓
 [角度提取] — 从 world landmarks 计算 5 个指标:
   1. headForward: angle(ear, shoulder, vertical)
-  2. torsoSlouch: angle(shoulder, hip, vertical)
+  2. ~~torsoSlouch: angle(shoulder, hip, vertical)~~ — 代码保留，暂不启用
   3. headTilt: atan2(leftEar.y - rightEar.y, leftEar.x - rightEar.x)
   4. faceFrameRatio: |leftEar.x - rightEar.x| / frameWidth
   5. shoulderDiff: |leftShoulder.y - rightShoulder.y|
@@ -79,7 +79,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 | 检测项 | 使用的关键点 |
 |--------|-------------|
 | 头部前倾 | LEFT_EAR(7), RIGHT_EAR(8), LEFT_SHOULDER(11), RIGHT_SHOULDER(12) |
-| 驼背弯腰 | LEFT_SHOULDER(11), RIGHT_SHOULDER(12), LEFT_HIP(23), RIGHT_HIP(24) |
+| ~~驼背弯腰~~ (暂不启用) | LEFT_SHOULDER(11), RIGHT_SHOULDER(12), LEFT_HIP(23), RIGHT_HIP(24) |
 | 歪头 | LEFT_EAR(7), RIGHT_EAR(8) |
 | 距屏幕太近 | LEFT_EAR(7), RIGHT_EAR(8) + 画面尺寸 |
 | 肩膀不对称 | LEFT_SHOULDER(11), RIGHT_SHOULDER(12) |
@@ -115,7 +115,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 | `npm test` | 运行全量测试（单元+集成+E2E） |
 | `npm run test:unit` | 仅运行 Vitest 单元/集成测试 |
 | `npm run test:e2e` | 仅运行 Playwright E2E 测试 |
-| `npm run test:accuracy` | 50 张照片算法精度测试 |
+| `npm run test:accuracy` | 40 张照片算法精度测试 |
 | `npm run test:performance` | CPU/内存/帧时间性能测试 |
 | `npm run test:multi-screen` | mock 多屏场景测试 |
 | `npm run test:permissions` | 6 种权限状态测试 |
@@ -124,10 +124,10 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 
 ## 里程碑进度
 
-- [ ] **Milestone 1: 核心检测引擎** — 尚未开始
-  - [ ] Phase 1.1: 项目脚手架 + 测试基础设施
-  - [ ] Phase 1.2: 摄像头和姿态检测
-  - [ ] Phase 1.3: 姿态分析引擎
+- [ ] **Milestone 1: 核心检测引擎** — 进行中
+  - [x] Phase 1.1: 项目脚手架 + 测试基础设施
+  - [x] Phase 1.2: 摄像头和姿态检测
+  - [x] Phase 1.3: 姿态分析引擎
   - [ ] Phase 1.4: 简单校准
   - [ ] Phase 1.5: 模糊和提醒
   - [ ] Phase 1.6: 设置 UI
@@ -142,7 +142,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 {
   "photoId": number,
   "filename": string,
-  "category": "good" | "forward_head" | "slouch" | "head_tilt" | "too_close" | "edge_case",
+  "category": "good" | "forward_head" | "head_tilt" | "too_close" | "edge_case",
   "expectedViolations": string[],
   "lidAngle": number,
   "lighting": "normal" | "bright" | "dim" | "side",
@@ -161,7 +161,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 - 避免主会话上下文爆炸
 
 Agent Team 组成：
-1. Algorithm Agent — `npm run test:accuracy` — 50 张照片精度测试
+1. Algorithm Agent — `npm run test:accuracy` — 40 张照片精度测试
 2. UI/E2E Agent — `npm run test:e2e` — Playwright 全流程测试
 3. Performance Agent — `npm run test:performance` — CPU/内存/帧时间
 4. Multi-Screen Agent — `npm run test:multi-screen` — mock 多屏场景
@@ -221,6 +221,6 @@ E2E 和集成测试使用 Chromium 内置参数替代实时摄像头：
 |------|------|---------|
 | MediaPipe WASM 性能 | 高 | 默认 500ms 检测间隔(2FPS); 可降级 LITE 模型; 考虑 Web Worker |
 | electron-liquid-glass 兼容性 | 高 | 始终保留 vibrancy 降级方案; 锁定版本 |
-| 屏幕角度估算精度 | 中 | 三信号加权+保守补偿+最大漂移上限+用 50 张照片调参 |
+| 屏幕角度估算精度 | 中 | 三信号加权+保守补偿+最大漂移上限+用 40 张照片调参 |
 | 误报导致用户反感 | 中 | 默认中等灵敏度+时间平滑+可配置延迟+低置信度帧忽略 |
 | macOS 摄像头权限 UX | 中 | 启动前检查+友好引导对话框+拒绝后手动开启指引 |
