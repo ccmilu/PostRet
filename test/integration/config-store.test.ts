@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { DEFAULT_SETTINGS, type PostureSettings } from '../../src/types/settings'
+import { DEFAULT_SETTINGS, type PostureSettings, type CalibrationData } from '../../src/types/settings'
 
 // Mock electron-store since we're running in jsdom environment
 const mockStore = new Map<string, unknown>()
@@ -138,5 +138,77 @@ describe('ConfigStore', () => {
     const newStore = new ConfigStore()
     const settings = newStore.getSettings()
     expect(settings).toEqual(DEFAULT_SETTINGS)
+  })
+
+  describe('CalibrationData serialization', () => {
+    it('preserves all numeric field precision through save/load cycle', () => {
+      const calibration: CalibrationData = {
+        headForwardAngle: 5.123456789,
+        torsoAngle: 3.987654321,
+        headTiltAngle: -1.555555555,
+        faceFrameRatio: 0.198765432,
+        shoulderDiff: 0.456789012,
+        timestamp: 1708473600000,
+      }
+      store.setSettings({ ...DEFAULT_SETTINGS, calibration })
+
+      const retrieved = store.getSettings()
+      expect(retrieved.calibration).not.toBeNull()
+      expect(retrieved.calibration!.headForwardAngle).toBe(5.123456789)
+      expect(retrieved.calibration!.torsoAngle).toBe(3.987654321)
+      expect(retrieved.calibration!.headTiltAngle).toBe(-1.555555555)
+      expect(retrieved.calibration!.faceFrameRatio).toBe(0.198765432)
+      expect(retrieved.calibration!.shoulderDiff).toBe(0.456789012)
+      expect(retrieved.calibration!.timestamp).toBe(1708473600000)
+    })
+
+    it('can overwrite calibration with null to clear it', () => {
+      const calibration: CalibrationData = {
+        headForwardAngle: 5.0,
+        torsoAngle: 3.0,
+        headTiltAngle: 1.0,
+        faceFrameRatio: 0.2,
+        shoulderDiff: 0.5,
+        timestamp: Date.now(),
+      }
+      store.setSettings({ ...DEFAULT_SETTINGS, calibration })
+      expect(store.getSettings().calibration).not.toBeNull()
+
+      store.setSettings({ ...DEFAULT_SETTINGS, calibration: null })
+      expect(store.getSettings().calibration).toBeNull()
+    })
+
+    it('preserves calibration across multiple set/get cycles', () => {
+      const calibration: CalibrationData = {
+        headForwardAngle: 7.5,
+        torsoAngle: 2.3,
+        headTiltAngle: -0.8,
+        faceFrameRatio: 0.25,
+        shoulderDiff: 1.2,
+        timestamp: 1700000000000,
+      }
+      // Write-read-write-read cycle
+      store.setSettings({ ...DEFAULT_SETTINGS, calibration })
+      const first = store.getSettings()
+      store.setSettings(first)
+      const second = store.getSettings()
+
+      expect(second.calibration).toEqual(calibration)
+    })
+
+    it('does not share references between saved and retrieved calibration', () => {
+      const calibration: CalibrationData = {
+        headForwardAngle: 5.0,
+        torsoAngle: 3.0,
+        headTiltAngle: 1.0,
+        faceFrameRatio: 0.2,
+        shoulderDiff: 0.5,
+        timestamp: Date.now(),
+      }
+      store.setSettings({ ...DEFAULT_SETTINGS, calibration })
+      const retrieved = store.getSettings()
+      // Should be a deep copy, not the same reference
+      expect(retrieved.calibration).not.toBe(calibration)
+    })
   })
 })
