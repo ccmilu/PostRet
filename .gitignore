@@ -72,3 +72,9 @@ test-results/
 playwright-report/
 
 plan/
+
+# Test videos and screenshots (large binaries)
+test/fixtures/videos/*.mov
+test/fixtures/videos/*.webm
+test/fixtures/photos/
+test/manual/*.png

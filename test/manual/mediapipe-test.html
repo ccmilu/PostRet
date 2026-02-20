@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MediaPipe PoseLandmarker 测试</title>
+  <style>
+    body { font-family: monospace; background: #1e1e1e; color: #e0e0e0; padding: 20px; }
+    #status { margin: 10px 0; padding: 10px; background: #333; font-size: 16px; }
+    canvas { border: 1px solid #555; display: block; margin: 10px 0; }
+    .result { margin: 5px 0; }
+    .pass { color: #4caf50; }
+    .fail { color: #f44336; }
+    .info { color: #2196f3; }
+    h2 { color: #fff; }
+  </style>
+</head>
+<body>
+  <h2>MediaPipe PoseLandmarker 测试</h2>
+  <div id="status">加载中...</div>
+  <video id="video" style="display:none" muted></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <div id="results"></div>
+
+  <script type="module">
+    import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18';
+
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function log(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.className = `result ${type}`;
+      div.textContent = msg;
+      resultsEl.appendChild(div);
+      console.log(`[${type}] ${msg}`);
+    }
+
+    function withTimeout(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} 超时 (${ms}ms)`)), ms))
+      ]);
+    }
+
+    async function run() {
+      try {
+        // 1. 加载 WASM
+        statusEl.textContent = '正在加载 MediaPipe WASM...';
+        log('开始加载 FilesetResolver...');
+        const vision = await withTimeout(
+          FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
+          ),
+          30000,
+          'FilesetResolver 加载'
+        );
+        log('✓ FilesetResolver 加载成功', 'pass');
+
+        // 2. 创建 PoseLandmarker - 使用 CPU delegate 避免 WebGL 问题
+        statusEl.textContent = '正在加载姿态检测模型 (CPU mode)...';
+        log('开始创建 PoseLandmarker (CPU delegate, 本地模型)...');
+
+        const modelPath = '/assets/models/pose_landmarker_full.task';
+
+        let poseLandmarker;
+        try {
+          poseLandmarker = await withTimeout(
+            PoseLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: modelPath,
+                delegate: 'CPU',
+              },
+              runningMode: 'VIDEO',
+              numPoses: 1,
+              minPoseDetectionConfidence: 0.5,
+            }),
+            60000,
+            'PoseLandmarker 创建 (本地模型)'
+          );
+          log('✓ PoseLandmarker 创建成功 (本地模型, CPU)', 'pass');
+        } catch (localErr) {
+          log(`本地模型失败: ${localErr.message}`, 'info');
+          log('尝试从 CDN 加载模型...', 'info');
+          statusEl.textContent = '正在从 CDN 加载模型...';
+          const cdnModelPath = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task';
+          poseLandmarker = await withTimeout(
+            PoseLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: cdnModelPath,
+                delegate: 'CPU',
+              },
+              runningMode: 'VIDEO',
+              numPoses: 1,
+              minPoseDetectionConfidence: 0.5,
+            }),
+            60000,
+            'PoseLandmarker 创建 (CDN 模型)'
+          );
+          log('✓ PoseLandmarker 创建成功 (CDN 模型, CPU)', 'pass');
+        }
+
+        // 3. 加载测试视频
+        statusEl.textContent = '正在加载测试视频...';
+        video.src = '/test/fixtures/videos/good-posture.webm';
+
+        await withTimeout(
+          new Promise((resolve, reject) => {
+            video.onloadeddata = resolve;
+            video.onerror = () => reject(new Error('视频加载失败'));
+            video.load();
+          }),
+          15000,
+          '视频加载'
+        );
+
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        log(`✓ 视频加载成功 (${video.videoWidth}x${video.videoHeight})`, 'pass');
+
+        // 4. 运行检测 - 在视频的第 1 秒
+        statusEl.textContent = '正在运行姿态检测...';
+        video.currentTime = 1;
+        await new Promise(r => { video.onseeked = r; });
+
+        const result = poseLandmarker.detectForVideo(video, performance.now());
+
+        if (result.landmarks && result.landmarks.length > 0) {
+          const landmarks = result.landmarks[0];
+          log(`✓ 检测到 ${landmarks.length} 个关键点`, 'pass');
+
+          // 验证关键点数量
+          if (landmarks.length === 33) {
+            log('✓ 关键点数量正确 (33个)', 'pass');
+          } else {
+            log(`✗ 关键点数量不正确: ${landmarks.length}`, 'fail');
+          }
+
+          // 验证关键点包含 x/y/z/visibility
+          const first = landmarks[0];
+          if ('x' in first && 'y' in first && 'z' in first && 'visibility' in first) {
+            log('✓ 关键点包含 x/y/z/visibility', 'pass');
+          } else {
+            log('✗ 关键点缺少必要字段', 'fail');
+          }
+
+          // 绘制视频帧到 canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          // 绘制关键点
+          landmarks.forEach((lm, i) => {
+            const x = lm.x * canvas.width;
+            const y = lm.y * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = lm.visibility > 0.5 ? '#4caf50' : '#f44336';
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = '9px monospace';
+            ctx.fillText(String(i), x + 5, y - 5);
+          });
+
+          // 绘制骨骼线
+          const connections = [
+            [11, 12], [11, 23], [12, 24], [23, 24],
+            [11, 13], [13, 15], [12, 14], [14, 16],
+            [23, 25], [25, 27], [24, 26], [26, 28],
+            [7, 8], [11, 7], [12, 8],
+          ];
+          ctx.strokeStyle = '#2196f3';
+          ctx.lineWidth = 2;
+          connections.forEach(([a, b]) => {
+            if (landmarks[a].visibility > 0.3 && landmarks[b].visibility > 0.3) {
+              ctx.beginPath();
+              ctx.moveTo(landmarks[a].x * canvas.width, landmarks[a].y * canvas.height);
+              ctx.lineTo(landmarks[b].x * canvas.width, landmarks[b].y * canvas.height);
+              ctx.stroke();
+            }
+          });
+
+          log('✓ 关键点和骨骼线已绘制到 canvas', 'pass');
+
+          // 检查世界坐标
+          if (result.worldLandmarks && result.worldLandmarks.length > 0) {
+            const wl = result.worldLandmarks[0];
+            log(`✓ World landmarks: ${wl.length} 个`, 'pass');
+            if (wl.length === 33) {
+              log('✓ World landmarks 数量正确 (33个)', 'pass');
+            } else {
+              log(`✗ World landmarks 数量不正确: ${wl.length}`, 'fail');
+            }
+          } else {
+            log('✗ World landmarks 不可用', 'fail');
+          }
+
+          // 显示关键关键点数据
+          const keyPoints = {
+            'LEFT_EAR(7)': landmarks[7],
+            'RIGHT_EAR(8)': landmarks[8],
+            'LEFT_SHOULDER(11)': landmarks[11],
+            'RIGHT_SHOULDER(12)': landmarks[12],
+            'LEFT_HIP(23)': landmarks[23],
+            'RIGHT_HIP(24)': landmarks[24],
+          };
+
+          log('--- 关键点详情 (normalized) ---', 'info');
+          for (const [name, lm] of Object.entries(keyPoints)) {
+            log(`  ${name}: x=${lm.x.toFixed(3)} y=${lm.y.toFixed(3)} z=${lm.z.toFixed(3)} vis=${lm.visibility.toFixed(3)}`, 'info');
+          }
+
+          if (result.worldLandmarks && result.worldLandmarks.length > 0) {
+            const wl = result.worldLandmarks[0];
+            const wKeyPoints = {
+              'LEFT_EAR(7)': wl[7],
+              'RIGHT_EAR(8)': wl[8],
+              'LEFT_SHOULDER(11)': wl[11],
+              'RIGHT_SHOULDER(12)': wl[12],
+              'LEFT_HIP(23)': wl[23],
+              'RIGHT_HIP(24)': wl[24],
+            };
+            log('--- 关键点详情 (world, metric) ---', 'info');
+            for (const [name, lm] of Object.entries(wKeyPoints)) {
+              log(`  ${name}: x=${lm.x.toFixed(4)} y=${lm.y.toFixed(4)} z=${lm.z.toFixed(4)} vis=${lm.visibility.toFixed(3)}`, 'info');
+            }
+          }
+
+          // 多帧检测测试
+          log('--- 多帧检测测试 ---', 'info');
+          const frameTimes = [];
+          for (let t = 0; t < 3; t++) {
+            video.currentTime = t + 0.5;
+            await new Promise(r => { video.onseeked = r; });
+            const start = performance.now();
+            const frameResult = poseLandmarker.detectForVideo(video, performance.now());
+            const elapsed = performance.now() - start;
+            frameTimes.push(elapsed);
+            const detected = frameResult.landmarks && frameResult.landmarks.length > 0;
+            log(`  帧 ${t}: ${detected ? '检测到' : '未检测到'} (${elapsed.toFixed(1)}ms)`, detected ? 'pass' : 'fail');
+          }
+          const avgTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+          log(`  平均检测时间: ${avgTime.toFixed(1)}ms`, 'info');
+
+          statusEl.textContent = '✅ 所有测试通过！';
+          statusEl.style.color = '#4caf50';
+          document.body.setAttribute('data-test-status', 'pass');
+
+        } else {
+          log('✗ 未检测到人体', 'fail');
+          statusEl.textContent = '❌ 未检测到人体';
+          statusEl.style.color = '#f44336';
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          document.body.setAttribute('data-test-status', 'fail');
+        }
+
+      } catch (err) {
+        log(`✗ 错误: ${err.message}`, 'fail');
+        statusEl.textContent = `❌ 测试失败: ${err.message}`;
+        statusEl.style.color = '#f44336';
+        console.error(err);
+        document.body.setAttribute('data-test-status', 'error');
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>
