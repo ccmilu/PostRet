@@ -1,0 +1,55 @@
+{
+  "name": "postret",
+  "version": "0.1.0",
+  "description": "基于摄像头的坐姿检测桌面应用，在姿态不佳时模糊屏幕并提醒",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run && playwright test",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:unit:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:accuracy": "vitest run test/accuracy",
+    "test:performance": "vitest run test/performance",
+    "test:multi-screen": "vitest run test/multi-screen",
+    "test:permissions": "vitest run test/permissions",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "download-models": "tsx scripts/download-models.ts",
+    "generate-landmarks": "tsx scripts/generate-test-landmarks.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ccmilu/PostRet.git"
+  },
+  "author": "jason",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ccmilu/PostRet/issues"
+  },
+  "homepage": "https://github.com/ccmilu/PostRet#readme",
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "electron": "^40.6.0",
+    "eslint": "^9.39.2",
+    "jsdom": "^27.0.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.0.18"
+  }
+}

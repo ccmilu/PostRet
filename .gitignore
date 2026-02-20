@@ -37,6 +37,7 @@ venv/
 # Build outputs
 build/
 dist/
+dist-electron/
 out/
 *.o
 *.so
@@ -57,3 +58,16 @@ htmlcov/
 *.bak
 *.tmp
 *.temp
+
+# Electron
+release/
+
+# MediaPipe models (downloaded at build time)
+assets/models/*.tflite
+assets/models/*.wasm
+
+# Playwright
+test-results/
+playwright-report/
+
+plan/

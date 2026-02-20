@@ -1,0 +1,83 @@
+export interface PostureSettings {
+  readonly detection: DetectionSettings
+  readonly reminder: ReminderSettings
+  readonly calibration: CalibrationData | null
+  readonly display: DisplaySettings
+  readonly advanced: AdvancedSettings
+}
+
+export interface DetectionSettings {
+  readonly enabled: boolean
+  readonly intervalMs: number
+  readonly sensitivity: number
+  readonly rules: RuleToggles
+}
+
+export interface RuleToggles {
+  readonly forwardHead: boolean
+  readonly slouch: boolean
+  readonly headTilt: boolean
+  readonly tooClose: boolean
+  readonly shoulderAsymmetry: boolean
+}
+
+export interface ReminderSettings {
+  readonly blur: boolean
+  readonly sound: boolean
+  readonly notification: boolean
+  readonly delayMs: number
+}
+
+export interface CalibrationData {
+  readonly headForwardAngle: number
+  readonly torsoAngle: number
+  readonly headTiltAngle: number
+  readonly faceFrameRatio: number
+  readonly shoulderDiff: number
+  readonly timestamp: number
+}
+
+export interface DisplaySettings {
+  readonly selectedCamera: string
+  readonly autoLaunch: boolean
+  readonly ignorePeriods: readonly IgnorePeriod[]
+}
+
+export interface IgnorePeriod {
+  readonly start: string
+  readonly end: string
+}
+
+export interface AdvancedSettings {
+  readonly debugMode: boolean
+}
+
+export const DEFAULT_SETTINGS: PostureSettings = {
+  detection: {
+    enabled: true,
+    intervalMs: 500,
+    sensitivity: 0.5,
+    rules: {
+      forwardHead: true,
+      slouch: true,
+      headTilt: true,
+      tooClose: true,
+      shoulderAsymmetry: true,
+    },
+  },
+  reminder: {
+    blur: true,
+    sound: false,
+    notification: true,
+    delayMs: 5000,
+  },
+  calibration: null,
+  display: {
+    selectedCamera: '',
+    autoLaunch: false,
+    ignorePeriods: [],
+  },
+  advanced: {
+    debugMode: false,
+  },
+}
