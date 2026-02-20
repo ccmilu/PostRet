@@ -65,6 +65,7 @@ release/
 # MediaPipe models (downloaded at build time)
 assets/models/*.tflite
 assets/models/*.wasm
+assets/models/*.task
 
 # Playwright
 test-results/

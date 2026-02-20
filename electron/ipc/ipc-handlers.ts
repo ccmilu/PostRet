@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from './ipc-channels'
+import { handleCameraPermission } from '../permissions/camera-permission'
 import type { ConfigStore } from '../store/config-store'
 import type { AppStatus } from '../../src/types/ipc'
 import type { CalibrationData, PostureSettings } from '../../src/types/settings'
@@ -27,8 +28,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CAMERA_PERMISSION, async () => {
-    // Will be implemented in Phase 1.2
-    return true
+    return handleCameraPermission()
   })
 
   ipcMain.handle(IPC_CHANNELS.CALIBRATION_START, () => {
