@@ -15,7 +15,8 @@
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(brew *)",
-      "Bash(which *)"
+      "Bash(which *)",
+      "Bash(ffmpeg *)"
     ],
     "deny": [
       "Read(./.env)",
