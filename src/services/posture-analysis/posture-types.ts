@@ -1,4 +1,4 @@
-import type { PostureRule } from '../../types/ipc'
+import type { PostureRule } from '@/types/ipc'
 
 export interface PostureAngles {
   readonly headForwardAngle: number

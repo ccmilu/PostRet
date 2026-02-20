@@ -1,5 +1,5 @@
-import type { PostureViolation } from '../../types/ipc'
-import type { RuleToggles } from '../../types/settings'
+import type { PostureViolation } from '@/types/ipc'
+import type { RuleToggles } from '@/types/settings'
 import type { AngleDeviations, RuleResult } from './posture-types'
 import type { RuleThresholds } from './thresholds'
 

@@ -1,4 +1,5 @@
-import { Landmark, PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
+import type { Landmark } from '@/services/pose-detection/pose-types'
+import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import { vectorAngle, toDegrees, midpoint } from '@/utils/math'
 import type { PostureAngles } from './posture-types'
 
@@ -72,7 +73,9 @@ export function shoulderAsymmetry(worldLandmarks: readonly Landmark[]): number {
   const leftShoulder = worldLandmarks[PoseLandmarkIndex.LEFT_SHOULDER]
   const rightShoulder = worldLandmarks[PoseLandmarkIndex.RIGHT_SHOULDER]
 
-  return toDegrees(Math.abs(leftShoulder.y - rightShoulder.y))
+  const dx = Math.abs(rightShoulder.x - leftShoulder.x)
+  const dy = Math.abs(leftShoulder.y - rightShoulder.y)
+  return toDegrees(Math.atan2(dy, dx))
 }
 
 export function extractPostureAngles(

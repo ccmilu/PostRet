@@ -6,8 +6,7 @@ import type { AngleDeviations } from './posture-types'
 import { extractPostureAngles } from './angle-calculator'
 import { getScaledThresholds } from './thresholds'
 import { evaluateAllRules } from './posture-rules'
-import { EMAFilter } from '@/utils/smoothing'
-import { JitterFilter } from '@/utils/smoothing'
+import { EMAFilter, JitterFilter } from '@/utils/smoothing'
 
 const CRITICAL_LANDMARKS = [
   PoseLandmarkIndex.LEFT_EAR,
