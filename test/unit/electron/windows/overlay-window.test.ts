@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { mockRelease, MockBrowserWindow, createMockBrowserWindow } = vi.hoisted(() => {
+const { mockRelease, MockBrowserWindow, createMockBrowserWindow, mockRequireFn } = vi.hoisted(() => {
   const mockRelease = vi.fn().mockReturnValue('25.3.0')
+
+  // Mock require function returned by createRequire — defaults to throwing (module not found)
+  const mockRequireFn = vi.fn().mockImplementation(() => { throw new Error('module not found in test') })
 
   function createMockBrowserWindow() {
     return {
@@ -31,7 +34,7 @@ const { mockRelease, MockBrowserWindow, createMockBrowserWindow } = vi.hoisted((
     return createMockBrowserWindow()
   })
 
-  return { mockRelease, MockBrowserWindow, createMockBrowserWindow }
+  return { mockRelease, MockBrowserWindow, createMockBrowserWindow, mockRequireFn }
 })
 
 vi.mock('electron', () => ({
@@ -48,10 +51,9 @@ vi.mock('os', () => ({
   release: () => mockRelease(),
 }))
 
-// Mock module/path — createRequire returns a function that always throws
-// (simulates electron-liquid-glass not being loadable in test env)
+// Mock module — createRequire returns mockRequireFn (defaults to throwing, can be overridden per test)
 vi.mock('module', () => {
-  const createRequire = () => () => { throw new Error('module not found in test') }
+  const createRequire = () => mockRequireFn
   return {
     default: { createRequire },
     createRequire,
@@ -142,6 +144,8 @@ describe('OverlayWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     MockBrowserWindow.mockImplementation(function () { return createMockBrowserWindow() })
+    // Default: module not found (most tests don't need LG to load)
+    mockRequireFn.mockImplementation(() => { throw new Error('module not found in test') })
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     mockRelease.mockReturnValue('25.3.0')
   })
@@ -541,6 +545,65 @@ describe('OverlayWindow', () => {
       expect(overlay.getEffectType()).toBe('vibrancy')
     })
 
+    it('tier 1→2: falls back to vibrancy when isGlassSupported() returns false', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      // Module loads successfully but reports glass as unsupported
+      mockRequireFn.mockReturnValue({
+        default: {
+          isGlassSupported: () => false,
+          addView: vi.fn(),
+        },
+      })
+
+      const mockInstance = createMockBrowserWindow()
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+      readyCallback!()
+
+      expect(mockInstance.setVibrancy).toHaveBeenCalledWith('fullscreen-ui')
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('tier 1: succeeds with Liquid Glass when module loads and glass is supported', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      // Module loads successfully and glass is supported
+      mockRequireFn.mockReturnValue({
+        default: {
+          isGlassSupported: () => true,
+          addView: vi.fn().mockReturnValue(42),
+        },
+      })
+
+      const mockInstance = createMockBrowserWindow()
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+      readyCallback!()
+
+      // Liquid Glass succeeded — no vibrancy fallback
+      expect(mockInstance.setVibrancy).not.toHaveBeenCalled()
+      expect(overlay.getEffectType()).toBe('liquid-glass')
+    })
+
     it('tier 2: uses vibrancy directly on legacy macOS', () => {
       Object.defineProperty(process, 'platform', { value: 'darwin' })
       mockRelease.mockReturnValue('23.1.0')
@@ -600,6 +663,36 @@ describe('OverlayWindow', () => {
       // Even if LG load fails and getNativeWindowHandle throws,
       // the window should still be usable with vibrancy fallback
       expect(() => readyCallback!()).not.toThrow()
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('does not crash if addView throws after successful module load', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      // Module loads, glass supported, but addView throws
+      mockRequireFn.mockReturnValue({
+        default: {
+          isGlassSupported: () => true,
+          addView: () => { throw new Error('native addon crash') },
+        },
+      })
+
+      const mockInstance = createMockBrowserWindow()
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      expect(() => readyCallback!()).not.toThrow()
+      // Falls back to vibrancy after addView throws
+      expect(mockInstance.setVibrancy).toHaveBeenCalledWith('fullscreen-ui')
       expect(overlay.getEffectType()).toBe('vibrancy')
     })
 
