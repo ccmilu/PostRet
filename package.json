@@ -13,7 +13,7 @@
     "test:unit:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:accuracy": "vitest run test/accuracy",
-    "test:performance": "vitest run test/performance",
+    "test:performance": "vitest run --config vitest.performance.config.ts",
     "test:multi-screen": "vitest run test/multi-screen",
     "test:permissions": "vitest run test/permissions",
     "lint": "eslint .",
