@@ -127,12 +127,13 @@ export function createPoseDetector(
           visibility: lm.visibility ?? 0,
         }))
 
+        // worldLandmarks don't have visibility — copy from normalizedLandmarks
         const worldLandmarks: readonly Landmark[] = rawWorldLandmarks
-          ? rawWorldLandmarks.map((lm) => ({
+          ? rawWorldLandmarks.map((lm, i) => ({
               x: lm.x,
               y: lm.y,
               z: lm.z,
-              visibility: lm.visibility ?? 0,
+              visibility: rawLandmarks[i]?.visibility ?? 0,
             }))
           : landmarks
 
