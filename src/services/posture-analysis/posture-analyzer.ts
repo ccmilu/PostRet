@@ -29,7 +29,7 @@ const CRITICAL_LANDMARKS = [
   PoseLandmarkIndex.RIGHT_SHOULDER,
 ] as const
 
-const EMA_ALPHA = 0.3
+const EMA_ALPHA = 0.5
 
 const JITTER_THRESHOLDS = {
   headForward: 1.0,

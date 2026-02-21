@@ -10,7 +10,7 @@ export interface RuleThresholds {
 export const DEFAULT_THRESHOLDS: RuleThresholds = {
   forwardHead: 8,
   forwardHeadFFR: 0.02,
-  forwardHeadNTE: 0.009,
+  forwardHeadNTE: 0.008,
   slouch: 20,
   headTilt: 12,
   shoulderAsymmetry: 10,
