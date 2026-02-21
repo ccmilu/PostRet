@@ -7,11 +7,17 @@ export interface CalibrationPageProps {
   readonly onComplete?: () => void
 }
 
+const MAX_CAMERA_RETRIES = 2
+const CAMERA_RETRY_DELAY_MS = 1000
+
 export function CalibrationPage({ onComplete }: CalibrationPageProps) {
-  const { status, progress, error, startCalibration, reset } = useCalibration()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const { status, progress, error, startCalibration, reset } = useCalibration({
+    videoRef,
+  })
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [cameraLoading, setCameraLoading] = useState(true)
   const [landmarks] = useState<NormalizedLandmark[][] | undefined>(undefined)
 
   const stopCamera = useCallback(() => {
@@ -27,18 +33,29 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
   }, [])
 
   const startCamera = useCallback(async () => {
-    try {
-      setCameraError(null)
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+    setCameraError(null)
+    setCameraLoading(true)
+
+    for (let attempt = 0; attempt <= MAX_CAMERA_RETRIES; attempt++) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        streamRef.current = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+        }
+        setCameraLoading(false)
+        return
+      } catch (err) {
+        if (attempt < MAX_CAMERA_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, CAMERA_RETRY_DELAY_MS))
+          continue
+        }
+        const message =
+          err instanceof Error ? err.message : '无法访问摄像头'
+        setCameraError(message)
+        setCameraLoading(false)
       }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : '无法访问摄像头'
-      setCameraError(message)
     }
   }, [])
 
@@ -80,6 +97,12 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
         />
       </div>
 
+      {cameraLoading && !cameraError && (
+        <div className="calibration-status" data-testid="calibration-camera-loading">
+          <p className="calibration-hint">正在启动摄像头...</p>
+        </div>
+      )}
+
       {cameraError && (
         <div className="calibration-status calibration-error" data-testid="calibration-camera-error">
           <p className="calibration-error-text">摄像头访问失败: {cameraError}</p>
@@ -93,7 +116,7 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
         </div>
       )}
 
-      {!cameraError && status === 'idle' && (
+      {!cameraError && !cameraLoading && status === 'idle' && (
         <div className="calibration-status" data-testid="calibration-idle">
           <p className="calibration-hint">请保持良好坐姿，然后点击开始校准</p>
           <button
