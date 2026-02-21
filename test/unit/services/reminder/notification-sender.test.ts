@@ -29,13 +29,13 @@ describe('getNotificationContent', () => {
   it('should return tooClose content for single TOO_CLOSE violation', () => {
     const content = getNotificationContent([makeViolation('TOO_CLOSE')])
     expect(content.title).toBe('距离太近')
-    expect(content.body).toBe('稍微往后坐一点，保护眼睛~')
+    expect(content.body).toBe('适当后移一些，保护视力哦~')
   })
 
   it('should return shoulderAsymmetry content for single SHOULDER_ASYMMETRY violation', () => {
     const content = getNotificationContent([makeViolation('SHOULDER_ASYMMETRY')])
-    expect(content.title).toBe('肩膀不对称')
-    expect(content.body).toBe('注意双肩保持平衡~')
+    expect(content.title).toBe('肩膀不平')
+    expect(content.body).toBe('注意双肩保持水平~')
   })
 
   it('should return general content for multiple violations', () => {

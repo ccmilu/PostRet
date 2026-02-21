@@ -29,11 +29,11 @@ const NOTIFICATION_MAP: Readonly<Record<string, NotificationContent>> = {
   },
   TOO_CLOSE: {
     title: '距离太近',
-    body: '稍微往后坐一点，保护眼睛~',
+    body: '适当后移一些，保护视力哦~',
   },
   SHOULDER_ASYMMETRY: {
-    title: '肩膀不对称',
-    body: '注意双肩保持平衡~',
+    title: '肩膀不平',
+    body: '注意双肩保持水平~',
   },
 }
 
