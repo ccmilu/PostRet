@@ -109,6 +109,7 @@ function hasLowVisibility(worldLandmarks: readonly Landmark[]): boolean {
 export interface AnalyzerOptions {
   readonly screenAngleReference?: ScreenAngleReference
   readonly screenAngleReferences?: readonly ScreenAngleCalibrationPoint[]
+  readonly debugMode?: boolean
 }
 
 export interface AnalyzeResult {
@@ -126,6 +127,7 @@ export class PostureAnalyzer {
   private screenAngleReferences: readonly ScreenAngleCalibrationPoint[]
   private adaptiveBaseline: AdaptiveBaseline
   private lastTimestamp: number
+  private debugMode: boolean
 
   constructor(
     calibration: CalibrationData,
@@ -143,6 +145,7 @@ export class PostureAnalyzer {
       ?? []
     this.adaptiveBaseline = new AdaptiveBaseline(calibration)
     this.lastTimestamp = 0
+    this.debugMode = options?.debugMode ?? false
   }
 
   analyzeDetailed(frame: DetectionFrame): AnalyzeResult {
@@ -227,6 +230,32 @@ export class PostureAnalyzer {
 
     const isGood = violations.length === 0
 
+    // Debug logging for diagnostics
+    // Enable via: window.__POSTURE_DEBUG = true  (in DevTools console)
+    const debugEnabled = this.debugMode
+      || (typeof globalThis !== 'undefined'
+        && (globalThis as Record<string, unknown>).__POSTURE_DEBUG === true)
+    if (debugEnabled) {
+      const ffrDelta = deviations.faceFrameRatio
+      const angleDelta = deviations.headForward
+      const ffrThresh = scaledThresholds.forwardHeadFFR
+      const angleThresh = scaledThresholds.forwardHead
+      const ffrScore = ffrThresh > 0 ? Math.max(0, ffrDelta) / ffrThresh : 0
+      const angleScore = angleThresh > 0 ? Math.max(0, angleDelta) / angleThresh : 0
+      const fhCombined = 0.6 * ffrScore + 0.4 * angleScore
+
+      console.log(
+        `[PostureDebug] ` +
+        `ffr: ${smoothedFaceRatio.toFixed(4)} ` +
+        `baseline: ${currentBaseline.faceFrameRatio.toFixed(4)} ` +
+        `delta: ${ffrDelta.toFixed(4)} | ` +
+        `FH score: ${fhCombined.toFixed(2)} (ffr=${ffrScore.toFixed(2)} angle=${angleScore.toFixed(2)}) ` +
+        `thresh: ffr>${ffrThresh.toFixed(4)} angle>${angleThresh.toFixed(1)} | ` +
+        `tooClose delta: ${ffrDelta.toFixed(4)} thresh>${scaledThresholds.tooClose.toFixed(4)} | ` +
+        `violations: [${violations.map(v => v.rule).join(',')}]`
+      )
+    }
+
     // Step 5.5: Update adaptive baseline after evaluation
     this.adaptiveBaseline.update(isGood, smoothedAngles, deltaTime)
 
@@ -264,6 +293,10 @@ export class PostureAnalyzer {
 
   updateRuleToggles(ruleToggles: RuleToggles): void {
     this.ruleToggles = ruleToggles
+  }
+
+  setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled
   }
 
   reset(): void {
