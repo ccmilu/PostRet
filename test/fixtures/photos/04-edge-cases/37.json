@@ -1,0 +1,10 @@
+{
+  "photoId": 37,
+  "filename": "37.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "空椅子(无人)，不应崩溃"
+}

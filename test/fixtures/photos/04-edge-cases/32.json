@@ -1,0 +1,10 @@
+{
+  "photoId": 32,
+  "filename": "32.jpeg",
+  "category": "too_close",
+  "expectedViolations": ["TOO_CLOSE"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "severe",
+  "notes": "非常靠近(面部占50%+)"
+}

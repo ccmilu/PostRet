@@ -1,0 +1,10 @@
+{
+  "photoId": 8,
+  "filename": "8.jpeg",
+  "category": "good",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "标准姿态，不同衣服"
+}

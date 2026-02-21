@@ -76,7 +76,9 @@ plan/
 # Test videos and screenshots (large binaries)
 test/fixtures/videos/*.mov
 test/fixtures/videos/*.webm
-test/fixtures/photos/
+test/fixtures/photos/**/*.jpeg
+test/fixtures/photos/**/*.jpg
+test/fixtures/photos/**/*.png
 test/manual/*.png
 test/screenshots/
 test/fixtures/screenshots/

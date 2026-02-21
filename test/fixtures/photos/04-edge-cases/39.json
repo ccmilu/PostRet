@@ -1,0 +1,10 @@
+{
+  "photoId": 39,
+  "filename": "39.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "side",
+  "severity": null,
+  "notes": "强侧光，阴影干扰"
+}

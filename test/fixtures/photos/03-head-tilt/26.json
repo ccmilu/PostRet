@@ -1,0 +1,10 @@
+{
+  "photoId": 26,
+  "filename": "26.jpeg",
+  "category": "head_tilt",
+  "expectedViolations": ["HEAD_TILT", "SHOULDER_ASYMMETRY"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "moderate",
+  "notes": "整体右倾"
+}

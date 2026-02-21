@@ -1,0 +1,10 @@
+{
+  "photoId": 34,
+  "filename": "34.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "半出画面(左侧)，应低置信度"
+}

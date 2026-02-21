@@ -1,0 +1,10 @@
+{
+  "photoId": 14,
+  "filename": "14.jpeg",
+  "category": "forward_head",
+  "expectedViolations": ["FORWARD_HEAD"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "moderate",
+  "notes": "前倾+低头"
+}

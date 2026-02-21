@@ -1,0 +1,10 @@
+{
+  "photoId": 4,
+  "filename": "4.jpeg",
+  "category": "good",
+  "expectedViolations": [],
+  "lidAngle": 130,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "标准姿态，屏幕后仰"
+}

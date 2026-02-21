@@ -1,0 +1,10 @@
+{
+  "photoId": 40,
+  "filename": "40.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "戴帽子/头巾，遮挡测试"
+}

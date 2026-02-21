@@ -1,0 +1,10 @@
+{
+  "photoId": 38,
+  "filename": "38.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "dim",
+  "severity": null,
+  "notes": "极暗环境，应低置信度"
+}

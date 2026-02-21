@@ -1,0 +1,10 @@
+{
+  "photoId": 24,
+  "filename": "24.jpeg",
+  "category": "head_tilt",
+  "expectedViolations": ["HEAD_TILT"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "moderate",
+  "notes": "右歪~30度"
+}

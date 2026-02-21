@@ -1,0 +1,10 @@
+{
+  "photoId": 36,
+  "filename": "36.jpeg",
+  "category": "edge_case",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": null,
+  "notes": "两人入镜，边缘情况"
+}

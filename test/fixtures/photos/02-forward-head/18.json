@@ -1,0 +1,10 @@
+{
+  "photoId": 18,
+  "filename": "18.jpeg",
+  "category": "forward_head",
+  "expectedViolations": ["FORWARD_HEAD"],
+  "lidAngle": 110,
+  "lighting": "dim",
+  "severity": "moderate",
+  "notes": "前倾，暗光"
+}

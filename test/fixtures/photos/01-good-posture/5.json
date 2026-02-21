@@ -1,0 +1,10 @@
+{
+  "photoId": 5,
+  "filename": "5.jpeg",
+  "category": "good",
+  "expectedViolations": [],
+  "lidAngle": 110,
+  "lighting": "bright",
+  "severity": null,
+  "notes": "标准姿态，强光(窗户逆光)"
+}
