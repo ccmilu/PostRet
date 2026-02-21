@@ -428,3 +428,151 @@
   color: #d70015;
   padding: 1px 0;
 }
+
+/* ============================================
+   Debug Panel (Developer Mode)
+   ============================================ */
+
+.debug-panel-container {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.debug-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.debug-close-btn {
+  background: transparent;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #6e6e73;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.debug-close-btn:hover {
+  background: #f0f0f5;
+  color: #1d1d1f;
+}
+
+.debug-card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.05), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.debug-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #86868b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.debug-data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.debug-data-label {
+  font-size: 12px;
+  color: #6e6e73;
+}
+
+.debug-data-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1d1d1f;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-placeholder {
+  opacity: 0.6;
+  text-align: center;
+  padding: 20px 16px;
+}
+
+/* Debug Data Table */
+
+.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.debug-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #86868b;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid #e5e5ea;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.debug-table td {
+  padding: 4px 8px 4px 0;
+  color: #1d1d1f;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid #f2f2f7;
+}
+
+.debug-table tr:last-child td {
+  border-bottom: none;
+}
+
+.debug-violations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #f2f2f7;
+}
+
+.debug-violation-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+/* Version click indicator */
+
+.version-text {
+  font-size: 11px;
+  color: #86868b;
+  cursor: default;
+  user-select: none;
+  padding: 8px 20px;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.version-text:hover {
+  color: #6e6e73;
+}
+
+.version-text:active {
+  color: #1d1d1f;
+}
+
+/* Debug tab style */
+
+.settings-tab-debug {
+  color: #ff9500;
+  font-size: 12px;
+}

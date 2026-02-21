@@ -1,35 +1,64 @@
 import { useState, useCallback } from 'react'
 import { GeneralSettings } from './GeneralSettings'
 import { ReminderSettings } from './ReminderSettings'
+import { DebugPanel } from './DebugPanel'
+import { useDebugMode } from '@/hooks/useDebugMode'
+import { useSettings } from '@/hooks/useSettings'
 import type { UsePostureDetectionReturn } from '@/hooks/usePostureDetection'
 
-export type SettingsTab = 'general' | 'reminder'
+const APP_VERSION = 'v0.1.0'
+
+export type SettingsTab = 'general' | 'reminder' | 'debug'
 
 export interface SettingsLayoutProps {
   readonly onStartCalibration?: () => void
   readonly detection?: UsePostureDetectionReturn
 }
 
-const TABS: readonly { readonly id: SettingsTab; readonly label: string }[] = [
+const BASE_TABS: readonly { readonly id: SettingsTab; readonly label: string }[] = [
   { id: 'general', label: '通用' },
   { id: 'reminder', label: '提醒' },
 ]
 
 export function SettingsLayout({ onStartCalibration, detection }: SettingsLayoutProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const { settings, updateSettings } = useSettings()
+
+  const handleDebugToggle = useCallback(
+    (enabled: boolean) => {
+      updateSettings({
+        advanced: { ...settings.advanced, debugMode: enabled },
+      })
+    },
+    [settings.advanced, updateSettings],
+  )
+
+  const { debugMode, handleVersionClick, closeDebugMode } = useDebugMode(
+    settings.advanced.debugMode,
+    handleDebugToggle,
+  )
 
   const handleTabClick = useCallback((tab: SettingsTab) => {
     setActiveTab(tab)
   }, [])
 
+  const handleCloseDebug = useCallback(() => {
+    closeDebugMode()
+    setActiveTab('general')
+  }, [closeDebugMode])
+
+  const tabs = debugMode
+    ? [...BASE_TABS, { id: 'debug' as const, label: '调试' }]
+    : BASE_TABS
+
   return (
     <div className="settings-layout" data-testid="settings-layout">
       <nav className="settings-sidebar" data-testid="settings-sidebar">
         <ul className="settings-tab-list">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <li key={tab.id}>
               <button
-                className={`settings-tab-btn${activeTab === tab.id ? ' settings-tab-active' : ''}`}
+                className={`settings-tab-btn${activeTab === tab.id ? ' settings-tab-active' : ''}${tab.id === 'debug' ? ' settings-tab-debug' : ''}`}
                 onClick={() => handleTabClick(tab.id)}
                 data-testid={`settings-tab-${tab.id}`}
                 aria-selected={activeTab === tab.id}
@@ -40,6 +69,15 @@ export function SettingsLayout({ onStartCalibration, detection }: SettingsLayout
             </li>
           ))}
         </ul>
+        <div
+          className="version-text"
+          onClick={handleVersionClick}
+          data-testid="version-text"
+          role="button"
+          tabIndex={0}
+        >
+          {APP_VERSION}
+        </div>
       </nav>
       <main className="settings-content" data-testid="settings-content" role="tabpanel">
         {activeTab === 'general' && (
@@ -49,6 +87,21 @@ export function SettingsLayout({ onStartCalibration, detection }: SettingsLayout
           />
         )}
         {activeTab === 'reminder' && <ReminderSettings />}
+        {activeTab === 'debug' && detection && (
+          <DebugPanel
+            detection={detection}
+            calibration={settings.calibration}
+            onClose={handleCloseDebug}
+          />
+        )}
+        {activeTab === 'debug' && !detection && (
+          <div className="settings-panel" data-testid="debug-no-detection">
+            <h2 className="settings-panel-title">调试</h2>
+            <p className="settings-description">
+              检测未启动，无法显示调试数据。
+            </p>
+          </div>
+        )}
       </main>
     </div>
   )
