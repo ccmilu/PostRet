@@ -43,6 +43,15 @@
   pointer-events: none;
 }
 
+.calibration-video-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 /* --- PosePreview --- */
 
 .pose-preview {
@@ -111,7 +120,7 @@
   margin: 0;
 }
 
-/* --- Progress Bar --- */
+/* --- Progress Bar (legacy) --- */
 
 .calibration-progress-bar {
   width: 100%;
@@ -155,12 +164,25 @@
   opacity: 0.7;
 }
 
+.calibration-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .calibration-btn-start {
   background: #007aff;
 }
 
+.calibration-btn-confirm {
+  background: #34c759;
+}
+
 .calibration-btn-back {
   background: #34c759;
+}
+
+.calibration-btn-secondary {
+  background: #86868b;
 }
 
 .calibration-btn-retry {
@@ -173,4 +195,173 @@
   padding: 16px;
   border-radius: 10px;
   background: rgba(255, 59, 48, 0.08);
+}
+
+/* ============================================
+   Wizard Styles (Phase 2.2)
+   ============================================ */
+
+/* --- Step Indicator --- */
+
+.wizard-steps-indicator {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.wizard-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d2d2d7;
+  transition: background 0.2s ease;
+}
+
+.wizard-step-dot.active {
+  background: #007aff;
+  width: 24px;
+  border-radius: 4px;
+}
+
+.wizard-step-dot.completed {
+  background: #34c759;
+}
+
+/* --- Wizard Step Common --- */
+
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.wizard-step-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.wizard-step-description {
+  font-size: 15px;
+  color: #6e6e73;
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* --- Welcome Step --- */
+
+.wizard-welcome-icon {
+  color: #007aff;
+  margin-bottom: 4px;
+}
+
+.wizard-welcome-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  background: #f5f5f7;
+  border-radius: 10px;
+  margin: 4px 0;
+}
+
+.wizard-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.wizard-tip-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #007aff;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.wizard-tip-text {
+  font-size: 14px;
+  color: #1d1d1f;
+  line-height: 24px;
+}
+
+/* --- Position Check Step --- */
+
+.position-status {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.position-status-good {
+  background: rgba(36, 138, 61, 0.1);
+  color: #248a3d;
+}
+
+.position-status-warning {
+  background: rgba(255, 159, 10, 0.1);
+  color: #c93400;
+}
+
+/* --- Button Group --- */
+
+.wizard-btn-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* --- Collect Step: Progress Ring --- */
+
+.calibration-progress-ring {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  margin: 8px 0;
+}
+
+.calibration-progress-ring svg {
+  position: absolute;
+  inset: 0;
+}
+
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.15s ease-out;
+}
+
+.progress-ring-text {
+  font-size: 24px;
+  font-weight: 600;
+  color: #007aff;
+  font-variant-numeric: tabular-nums;
+  z-index: 1;
+}
+
+/* --- Confirm Step --- */
+
+.wizard-confirm-icon {
+  margin-bottom: 4px;
+}
+
+.wizard-confirm-title {
+  color: #248a3d;
 }

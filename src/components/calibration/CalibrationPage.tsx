@@ -1,7 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { useCalibration } from '@/hooks/useCalibration'
+import { useCalibrationWizard } from '@/hooks/useCalibrationWizard'
 import { PosePreview } from './PosePreview'
-import type { NormalizedLandmark } from './PosePreview'
+import { WelcomeStep } from './WelcomeStep'
+import { PositionCheckStep } from './PositionCheckStep'
+import { CollectStep } from './CollectStep'
+import { ConfirmStep } from './ConfirmStep'
 
 export interface CalibrationPageProps {
   readonly onComplete?: () => void
@@ -13,12 +16,10 @@ const CAMERA_RETRY_DELAY_MS = 1000
 export function CalibrationPage({ onComplete }: CalibrationPageProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const { status, progress, error, startCalibration, reset } = useCalibration({
-    videoRef,
-  })
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraLoading, setCameraLoading] = useState(true)
-  const [landmarks] = useState<NormalizedLandmark[][] | undefined>(undefined)
+
+  const wizard = useCalibrationWizard({ videoRef })
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -64,51 +65,42 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
     return stopCamera
   }, [startCamera, stopCamera])
 
-  const handleRetry = useCallback(() => {
-    reset()
+  const handleRetryCamera = useCallback(() => {
     setCameraError(null)
     startCamera()
-  }, [reset, startCamera])
+  }, [startCamera])
 
-  const handleBack = useCallback(() => {
+  const handleConfirm = useCallback(() => {
+    wizard.confirm()
+    stopCamera()
     onComplete?.()
-  }, [onComplete])
+  }, [wizard, stopCamera, onComplete])
 
-  const progressPercent = Math.round(progress * 100)
+  const handleRecalibrate = useCallback(() => {
+    wizard.recalibrate()
+  }, [wizard])
+
+  const showVideo = wizard.step === 2 || wizard.step === 3
 
   return (
-    <div className="calibration-page" data-testid="calibration-page">
-      <h2 className="calibration-title">姿态校准</h2>
-
-      <div className="calibration-preview-container">
-        <video
-          ref={videoRef}
-          className="calibration-video"
-          autoPlay
-          playsInline
-          muted
-          data-testid="calibration-video"
-        />
-        <PosePreview
-          videoRef={videoRef}
-          landmarks={landmarks}
-          width={640}
-          height={480}
-        />
+    <div className="calibration-page" data-testid="calibration-wizard">
+      {/* Step indicator */}
+      <div className="wizard-steps-indicator" data-testid="wizard-steps-indicator">
+        {[1, 2, 3, 4].map((s) => (
+          <div
+            key={s}
+            className={`wizard-step-dot ${s === wizard.step ? 'active' : ''} ${s < wizard.step ? 'completed' : ''}`}
+          />
+        ))}
       </div>
 
-      {cameraLoading && !cameraError && (
-        <div className="calibration-status" data-testid="calibration-camera-loading">
-          <p className="calibration-hint">正在启动摄像头...</p>
-        </div>
-      )}
-
+      {/* Camera error overlay */}
       {cameraError && (
         <div className="calibration-status calibration-error" data-testid="calibration-camera-error">
           <p className="calibration-error-text">摄像头访问失败: {cameraError}</p>
           <button
             className="calibration-btn calibration-btn-retry"
-            onClick={handleRetry}
+            onClick={handleRetryCamera}
             data-testid="calibration-retry-btn"
           >
             重试
@@ -116,57 +108,78 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
         </div>
       )}
 
-      {!cameraError && !cameraLoading && status === 'idle' && (
-        <div className="calibration-status" data-testid="calibration-idle">
-          <p className="calibration-hint">请保持良好坐姿，然后点击开始校准</p>
-          <button
-            className="calibration-btn calibration-btn-start"
-            onClick={startCalibration}
-            data-testid="calibration-start-btn"
-          >
-            开始校准
-          </button>
-        </div>
-      )}
-
-      {!cameraError && status === 'collecting' && (
-        <div className="calibration-status" data-testid="calibration-collecting">
-          <p className="calibration-hint">正在采集... 请保持姿势不动</p>
-          <div className="calibration-progress-bar" data-testid="calibration-progress-bar">
-            <div
-              className="calibration-progress-fill"
-              style={{ width: `${progressPercent}%` }}
-              data-testid="calibration-progress-fill"
-            />
-          </div>
-          <span className="calibration-progress-text">{progressPercent}%</span>
-        </div>
-      )}
-
-      {!cameraError && status === 'completed' && (
-        <div className="calibration-status" data-testid="calibration-completed">
-          <p className="calibration-success-text">校准完成 ✓</p>
-          <button
-            className="calibration-btn calibration-btn-back"
-            onClick={handleBack}
-            data-testid="calibration-back-btn"
-          >
-            返回设置
-          </button>
-        </div>
-      )}
-
-      {!cameraError && status === 'error' && (
+      {/* Wizard error */}
+      {wizard.error && !cameraError && (
         <div className="calibration-status calibration-error" data-testid="calibration-error">
-          <p className="calibration-error-text">{error ?? '校准失败'}</p>
+          <p className="calibration-error-text">{wizard.error}</p>
           <button
             className="calibration-btn calibration-btn-retry"
-            onClick={handleRetry}
+            onClick={handleRecalibrate}
             data-testid="calibration-retry-btn"
           >
             重试
           </button>
         </div>
+      )}
+
+      {/* Video preview (shown in steps 2 & 3) */}
+      {showVideo && !cameraError && (
+        <div className="calibration-preview-container">
+          <video
+            ref={videoRef}
+            className="calibration-video"
+            autoPlay
+            playsInline
+            muted
+            data-testid="calibration-video"
+          />
+          <PosePreview
+            videoRef={videoRef}
+            landmarks={wizard.landmarks}
+            width={640}
+            height={480}
+          />
+        </div>
+      )}
+
+      {/* Hidden video element for steps 1 & 4 (keeps stream alive) */}
+      {!showVideo && (
+        <video
+          ref={videoRef}
+          className="calibration-video-hidden"
+          autoPlay
+          playsInline
+          muted
+        />
+      )}
+
+      {/* Step content */}
+      {!cameraError && !wizard.error && (
+        <>
+          {wizard.step === 1 && (
+            <WelcomeStep onStart={wizard.goToStep2} />
+          )}
+
+          {wizard.step === 2 && (
+            <PositionCheckStep
+              positionResult={wizard.positionResult}
+              canContinue={wizard.canContinue}
+              onContinue={wizard.goToStep3}
+              onBack={wizard.goBackToStep1}
+            />
+          )}
+
+          {wizard.step === 3 && (
+            <CollectStep progress={wizard.progress} />
+          )}
+
+          {wizard.step === 4 && (
+            <ConfirmStep
+              onRecalibrate={handleRecalibrate}
+              onConfirm={handleConfirm}
+            />
+          )}
+        </>
       )}
     </div>
   )

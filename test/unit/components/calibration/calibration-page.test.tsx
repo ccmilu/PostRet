@@ -1,21 +1,37 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { CalibrationPage } from '@/components/calibration/CalibrationPage'
-import type { CalibrationStatus } from '@/hooks/useCalibration'
+import type { WizardStep } from '@/hooks/useCalibrationWizard'
+import type { PositionCheckResult } from '@/components/calibration/position-check'
 
-// Mock useCalibration hook
-const mockStartCalibration = vi.fn()
-const mockReset = vi.fn()
-let mockStatus: CalibrationStatus = 'idle'
+// Mock useCalibrationWizard hook
+const mockGoToStep2 = vi.fn()
+const mockGoToStep3 = vi.fn()
+const mockGoBackToStep1 = vi.fn()
+const mockRecalibrate = vi.fn()
+const mockConfirm = vi.fn()
+
+let mockStep: WizardStep = 1
 let mockProgress = 0
 let mockError: string | null = null
+let mockPositionResult: PositionCheckResult = {
+  status: 'no_face',
+  message: '未检测到人脸，请确保脸部在摄像头画面中',
+}
+let mockCanContinue = false
 
-vi.mock('@/hooks/useCalibration', () => ({
-  useCalibration: () => ({
-    status: mockStatus,
+vi.mock('@/hooks/useCalibrationWizard', () => ({
+  useCalibrationWizard: () => ({
+    step: mockStep,
     progress: mockProgress,
     error: mockError,
-    startCalibration: mockStartCalibration,
-    reset: mockReset,
+    positionResult: mockPositionResult,
+    canContinue: mockCanContinue,
+    landmarks: undefined,
+    goToStep2: mockGoToStep2,
+    goToStep3: mockGoToStep3,
+    goBackToStep1: mockGoBackToStep1,
+    recalibrate: mockRecalibrate,
+    confirm: mockConfirm,
   }),
 }))
 
@@ -25,11 +41,19 @@ const mockPlay = vi.fn().mockResolvedValue(undefined)
 
 beforeEach(() => {
   vi.useFakeTimers()
-  mockStatus = 'idle'
+  mockStep = 1
   mockProgress = 0
   mockError = null
-  mockStartCalibration.mockClear()
-  mockReset.mockClear()
+  mockPositionResult = {
+    status: 'no_face',
+    message: '未检测到人脸，请确保脸部在摄像头画面中',
+  }
+  mockCanContinue = false
+  mockGoToStep2.mockClear()
+  mockGoToStep3.mockClear()
+  mockGoBackToStep1.mockClear()
+  mockRecalibrate.mockClear()
+  mockConfirm.mockClear()
   mockGetUserMedia.mockClear()
   mockPlay.mockClear()
 
@@ -57,188 +81,139 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('CalibrationPage', () => {
-  describe('idle state', () => {
-    it('renders the calibration page', async () => {
+describe('CalibrationPage (Wizard)', () => {
+  describe('step 1 - welcome', () => {
+    it('renders the wizard container', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      expect(screen.getByTestId('calibration-page')).toBeInTheDocument()
+      expect(screen.getByTestId('calibration-wizard')).toBeInTheDocument()
+    })
+
+    it('shows welcome step with start button', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(screen.getByTestId('wizard-step-1')).toBeInTheDocument()
       expect(screen.getByText('姿态校准')).toBeInTheDocument()
+      expect(screen.getByTestId('wizard-start-btn')).toBeInTheDocument()
     })
 
-    it('shows idle UI with hint text and start button after camera ready', async () => {
+    it('calls goToStep2 when start button is clicked', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      expect(screen.getByTestId('calibration-idle')).toBeInTheDocument()
-      expect(screen.getByText('请保持良好坐姿，然后点击开始校准')).toBeInTheDocument()
-      expect(screen.getByTestId('calibration-start-btn')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('wizard-start-btn'))
+
+      expect(mockGoToStep2).toHaveBeenCalledOnce()
     })
 
-    it('calls startCalibration when start button is clicked', async () => {
+    it('shows step indicator dots', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      fireEvent.click(screen.getByTestId('calibration-start-btn'))
+      expect(screen.getByTestId('wizard-steps-indicator')).toBeInTheDocument()
+    })
+  })
 
-      expect(mockStartCalibration).toHaveBeenCalledOnce()
+  describe('step 2 - position check', () => {
+    beforeEach(() => {
+      mockStep = 2
     })
 
-    it('renders video element for camera feed', async () => {
+    it('shows position check step', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(screen.getByTestId('wizard-step-2')).toBeInTheDocument()
+      expect(screen.getByText('位置检查')).toBeInTheDocument()
+    })
+
+    it('shows position status message', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(screen.getByTestId('position-status')).toBeInTheDocument()
+    })
+
+    it('disables continue button when position is not good', async () => {
+      mockCanContinue = false
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      const btn = screen.getByTestId('wizard-continue-btn')
+      expect(btn).toBeDisabled()
+    })
+
+    it('enables continue button when position is good', async () => {
+      mockCanContinue = true
+      mockPositionResult = { status: 'good', message: '位置合适！' }
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      const btn = screen.getByTestId('wizard-continue-btn')
+      expect(btn).not.toBeDisabled()
+    })
+
+    it('calls goToStep3 when continue button is clicked', async () => {
+      mockCanContinue = true
+      mockPositionResult = { status: 'good', message: '位置合适！' }
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      fireEvent.click(screen.getByTestId('wizard-continue-btn'))
+
+      expect(mockGoToStep3).toHaveBeenCalledOnce()
+    })
+
+    it('calls goBackToStep1 when back button is clicked', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      fireEvent.click(screen.getByTestId('wizard-back-btn'))
+
+      expect(mockGoBackToStep1).toHaveBeenCalledOnce()
+    })
+
+    it('shows video preview', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
       expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
     })
-
-    it('requests camera on mount', async () => {
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      expect(mockGetUserMedia).toHaveBeenCalledWith({ video: true })
-    })
   })
 
-  describe('camera loading state', () => {
-    it('shows loading message on initial render before camera is ready', async () => {
-      // Make getUserMedia hang (never resolves)
-      mockGetUserMedia.mockReturnValue(new Promise(() => {}))
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      expect(screen.getByTestId('calibration-camera-loading')).toBeInTheDocument()
-      expect(screen.getByText('正在启动摄像头...')).toBeInTheDocument()
-      // Should NOT show error or idle UI
-      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('calibration-idle')).not.toBeInTheDocument()
-    })
-
-    it('does not flash error on first render', async () => {
-      // getUserMedia fails on first attempt but succeeds after retry
-      mockGetUserMedia
-        .mockRejectedValueOnce(new Error('NotReadableError'))
-        .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      // While retrying, should show loading, not error
-      expect(screen.getByTestId('calibration-camera-loading')).toBeInTheDocument()
-      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
-
-      // Advance past retry delay
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1100)
-      })
-
-      // After successful retry, should show idle state
-      expect(screen.getByTestId('calibration-idle')).toBeInTheDocument()
-      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('camera auto-retry', () => {
-    it('retries getUserMedia automatically on first failure', async () => {
-      mockGetUserMedia
-        .mockRejectedValueOnce(new Error('NotReadableError'))
-        .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      // First call happened
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(1)
-
-      // Advance past retry delay
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1100)
-      })
-
-      // Second call happened (auto-retry)
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(2)
-      // Camera is now working, show idle
-      expect(screen.getByTestId('calibration-idle')).toBeInTheDocument()
-    })
-
-    it('shows error only after all retry attempts are exhausted', async () => {
-      // All attempts fail (initial + 2 retries = 3 total)
-      mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      // Advance through all retry delays
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1100)
-      })
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1100)
-      })
-
-      // All 3 attempts made (initial + 2 retries)
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(3)
-      // Now shows error
-      expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
-      expect(screen.getByText(/Permission denied/)).toBeInTheDocument()
-    })
-
-    it('retries up to MAX_CAMERA_RETRIES times before showing error', async () => {
-      mockGetUserMedia.mockRejectedValue(new Error('Camera busy'))
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      // Advance through all retries
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(3000)
-      })
-
-      // 1 initial + 2 retries = 3
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(3)
-      expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
-    })
-  })
-
-  describe('collecting state', () => {
+  describe('step 3 - collect', () => {
     beforeEach(() => {
-      mockStatus = 'collecting'
+      mockStep = 3
       mockProgress = 0.5
     })
 
-    it('shows collecting UI with progress', async () => {
+    it('shows collect step with progress ring', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      expect(screen.getByTestId('calibration-collecting')).toBeInTheDocument()
-      expect(screen.getByText('正在采集... 请保持姿势不动')).toBeInTheDocument()
-    })
-
-    it('shows progress bar with correct percentage', async () => {
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      expect(screen.getByTestId('calibration-progress-bar')).toBeInTheDocument()
+      expect(screen.getByTestId('wizard-step-3')).toBeInTheDocument()
+      expect(screen.getByTestId('calibration-progress-ring')).toBeInTheDocument()
       expect(screen.getByText('50%')).toBeInTheDocument()
-
-      const fill = screen.getByTestId('calibration-progress-fill')
-      expect(fill).toHaveStyle({ width: '50%' })
     })
 
-    it('shows 0% at start of collecting', async () => {
+    it('shows 0% at start', async () => {
       mockProgress = 0
 
       await act(async () => {
@@ -248,7 +223,7 @@ describe('CalibrationPage', () => {
       expect(screen.getByText('0%')).toBeInTheDocument()
     })
 
-    it('shows 100% when progress is 1', async () => {
+    it('shows 100% when complete', async () => {
       mockProgress = 1
 
       await act(async () => {
@@ -257,78 +232,61 @@ describe('CalibrationPage', () => {
 
       expect(screen.getByText('100%')).toBeInTheDocument()
     })
+
+    it('shows video preview during collection', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
+    })
   })
 
-  describe('completed state', () => {
+  describe('step 4 - confirm', () => {
     beforeEach(() => {
-      mockStatus = 'completed'
+      mockStep = 4
       mockProgress = 1
     })
 
-    it('shows completed UI', async () => {
+    it('shows confirm step', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      expect(screen.getByTestId('calibration-completed')).toBeInTheDocument()
-      expect(screen.getByText('校准完成 ✓')).toBeInTheDocument()
+      expect(screen.getByTestId('wizard-step-4')).toBeInTheDocument()
+      expect(screen.getByText('校准完成')).toBeInTheDocument()
     })
 
-    it('shows back button', async () => {
+    it('shows recalibrate and confirm buttons', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      expect(screen.getByTestId('calibration-back-btn')).toBeInTheDocument()
-      expect(screen.getByText('返回设置')).toBeInTheDocument()
+      expect(screen.getByTestId('wizard-recalibrate-btn')).toBeInTheDocument()
+      expect(screen.getByTestId('wizard-confirm-btn')).toBeInTheDocument()
     })
 
-    it('calls onComplete when back button is clicked', async () => {
+    it('calls recalibrate when recalibrate button is clicked', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      fireEvent.click(screen.getByTestId('wizard-recalibrate-btn'))
+
+      expect(mockRecalibrate).toHaveBeenCalledOnce()
+    })
+
+    it('calls onComplete when confirm button is clicked', async () => {
       const onComplete = vi.fn()
 
       await act(async () => {
         render(<CalibrationPage onComplete={onComplete} />)
       })
 
-      fireEvent.click(screen.getByTestId('calibration-back-btn'))
+      fireEvent.click(screen.getByTestId('wizard-confirm-btn'))
 
+      expect(mockConfirm).toHaveBeenCalledOnce()
       expect(onComplete).toHaveBeenCalledOnce()
-    })
-  })
-
-  describe('error state', () => {
-    beforeEach(() => {
-      mockStatus = 'error'
-      mockError = '校准过程中发生错误'
-    })
-
-    it('shows error UI with error message', async () => {
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      expect(screen.getByTestId('calibration-error')).toBeInTheDocument()
-      expect(screen.getByText('校准过程中发生错误')).toBeInTheDocument()
-    })
-
-    it('shows default error message when error is null', async () => {
-      mockError = null
-
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      expect(screen.getByText('校准失败')).toBeInTheDocument()
-    })
-
-    it('shows retry button that resets calibration', async () => {
-      await act(async () => {
-        render(<CalibrationPage />)
-      })
-
-      fireEvent.click(screen.getByTestId('calibration-retry-btn'))
-
-      expect(mockReset).toHaveBeenCalledOnce()
     })
   })
 
@@ -364,7 +322,7 @@ describe('CalibrationPage', () => {
       expect(screen.getByText(/无法访问摄像头/)).toBeInTheDocument()
     })
 
-    it('retries camera when retry button is clicked on camera error', async () => {
+    it('retries camera when retry button is clicked', async () => {
       mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
 
       await act(async () => {
@@ -385,7 +343,12 @@ describe('CalibrationPage', () => {
 
       fireEvent.click(screen.getByTestId('calibration-retry-btn'))
 
-      expect(mockReset).toHaveBeenCalledOnce()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+      // Camera should be retried
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(4) // 3 original + 1 retry
     })
   })
 
@@ -406,6 +369,16 @@ describe('CalibrationPage', () => {
       })
 
       expect(mockStop).toHaveBeenCalled()
+    })
+  })
+
+  describe('requests camera on mount', () => {
+    it('calls getUserMedia', async () => {
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(mockGetUserMedia).toHaveBeenCalledWith({ video: true })
     })
   })
 })
