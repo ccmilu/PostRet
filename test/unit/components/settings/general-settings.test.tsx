@@ -135,6 +135,40 @@ describe('GeneralSettings', () => {
     })
   })
 
+  it('should render auto-launch toggle', async () => {
+    renderWithProvider(<GeneralSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('general-settings')).toBeInTheDocument()
+    })
+
+    expect(screen.getByLabelText('开机自启')).toBeInTheDocument()
+  })
+
+  it('should toggle auto-launch via updateDisplay', async () => {
+    const mockSetSettings = vi.fn().mockResolvedValue(undefined)
+    window.electronAPI = createMockElectronAPI({
+      setSettings: mockSetSettings,
+    })
+
+    renderWithProvider(<GeneralSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('general-settings')).toBeInTheDocument()
+    })
+
+    const toggle = screen.getByLabelText('开机自启')
+    fireEvent.click(toggle)
+
+    await waitFor(() => {
+      expect(mockSetSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          display: expect.objectContaining({ autoLaunch: true }),
+        }),
+      )
+    })
+  })
+
   it('should show last calibration timestamp when calibrated', async () => {
     const timestamp = new Date('2026-02-20T10:00:00Z').getTime()
     window.electronAPI = createMockElectronAPI({

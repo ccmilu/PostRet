@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from './ipc-channels'
 import { handleCameraPermission } from '../permissions/camera-permission'
+import { syncAutoLaunch } from '../auto-launch/auto-launch'
 import type { ConfigStore } from '../store/config-store'
 import type { AppStatus, PostureStatus } from '../../src/types/ipc'
 import type { CalibrationData, PostureSettings } from '../../src/types/settings'
@@ -22,7 +23,13 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: PostureSettings) => {
+    const previous = configStore.getSettings()
     configStore.setSettings(settings)
+
+    if (settings.display.autoLaunch !== previous.display.autoLaunch) {
+      syncAutoLaunch(settings.display.autoLaunch)
+    }
+
     deps.onSettingsChanged?.()
   })
 

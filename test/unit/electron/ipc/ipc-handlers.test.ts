@@ -15,6 +15,11 @@ vi.mock('electron', () => ({
   },
 }))
 
+const mockSyncAutoLaunch = vi.fn()
+vi.mock('@electron/auto-launch/auto-launch', () => ({
+  syncAutoLaunch: (...args: unknown[]) => mockSyncAutoLaunch(...args),
+}))
+
 // Must import after mock setup
 import { registerIpcHandlers } from '@electron/ipc/ipc-handlers'
 import { IPC_CHANNELS } from '@electron/ipc/ipc-channels'
@@ -37,6 +42,7 @@ describe('registerIpcHandlers', () => {
 
   beforeEach(() => {
     handlers.clear()
+    mockSyncAutoLaunch.mockClear()
     configStore = createMockConfigStore()
     getAppStatus = vi.fn(() => 'detecting' as AppStatus)
     setAppStatus = vi.fn()
@@ -124,5 +130,25 @@ describe('registerIpcHandlers', () => {
     }
     handler({}, status)
     expect(onPostureStatus).toHaveBeenCalledWith(status)
+  })
+
+  it('SETTINGS_SET should sync auto-launch when autoLaunch changes', () => {
+    const handler = handlers.get(IPC_CHANNELS.SETTINGS_SET)!
+    const newSettings = {
+      ...DEFAULT_SETTINGS,
+      display: { ...DEFAULT_SETTINGS.display, autoLaunch: true },
+    }
+    handler({}, newSettings)
+    expect(mockSyncAutoLaunch).toHaveBeenCalledWith(true)
+  })
+
+  it('SETTINGS_SET should not sync auto-launch when autoLaunch unchanged', () => {
+    const handler = handlers.get(IPC_CHANNELS.SETTINGS_SET)!
+    const newSettings = {
+      ...DEFAULT_SETTINGS,
+      reminder: { ...DEFAULT_SETTINGS.reminder, blur: false },
+    }
+    handler({}, newSettings)
+    expect(mockSyncAutoLaunch).not.toHaveBeenCalled()
   })
 })

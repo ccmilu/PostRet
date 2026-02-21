@@ -44,13 +44,20 @@ function formatRatio(value: number): string {
 }
 
 export function GeneralSettings({ onStartCalibration, detection }: GeneralSettingsProps) {
-  const { settings, loading, updateDetection } = useSettings()
+  const { settings, loading, updateDetection, updateDisplay } = useSettings()
 
   const handleEnabledChange = useCallback(
     (checked: boolean) => {
       updateDetection({ enabled: checked })
     },
     [updateDetection],
+  )
+
+  const handleAutoLaunchChange = useCallback(
+    (checked: boolean) => {
+      updateDisplay({ autoLaunch: checked })
+    },
+    [updateDisplay],
   )
 
   if (loading) {
@@ -87,6 +94,15 @@ export function GeneralSettings({ onStartCalibration, detection }: GeneralSettin
             {detection.error}
           </p>
         )}
+      </Card>
+
+      <Card title="启动">
+        <Toggle
+          label="开机自启"
+          checked={settings.display.autoLaunch}
+          onChange={handleAutoLaunchChange}
+          description="登录 macOS 后自动启动姿态矫正"
+        />
       </Card>
 
       <Card title="校准">
