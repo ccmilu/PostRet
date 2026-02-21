@@ -14,11 +14,39 @@ function computeSeverity(deviation: number, threshold: number): number {
   return Math.min(1, Math.max(0, excess / threshold))
 }
 
-export function forwardHeadRule(deviation: number, threshold: number): RuleResult {
-  if (deviation <= threshold) return null
+// Weights for multi-signal forward head scoring.
+// Front-facing cameras compress z-axis depth, making ear-shoulder angle alone
+// unreliable. faceFrameRatio change (head moving closer to camera) is the
+// primary signal; ear-shoulder angle serves as auxiliary confirmation.
+const FH_WEIGHT_FFR = 0.6
+const FH_WEIGHT_ANGLE = 0.4
+
+export interface ForwardHeadSignals {
+  readonly ffrDelta: number
+  readonly angleDelta: number
+}
+
+/**
+ * Multi-signal forward head rule.
+ * Combined score = w_ffr * (ffrDelta / ffrThreshold) + w_angle * (angleDelta / angleThreshold)
+ * Triggers when combined score > 1.0.
+ */
+export function forwardHeadRule(
+  signals: ForwardHeadSignals,
+  angleThreshold: number,
+  ffrThreshold: number,
+): RuleResult {
+  const ffrScore = ffrThreshold > 0 ? Math.max(0, signals.ffrDelta) / ffrThreshold : 0
+  const angleScore = angleThreshold > 0 ? Math.max(0, signals.angleDelta) / angleThreshold : 0
+  const combinedScore = FH_WEIGHT_FFR * ffrScore + FH_WEIGHT_ANGLE * angleScore
+
+  if (combinedScore <= 1.0) return null
+
+  // Severity: 0 at the trigger point, 1 when score reaches 2.0
+  const severity = Math.min(1, Math.max(0, combinedScore - 1.0))
   return {
     rule: 'FORWARD_HEAD',
-    severity: computeSeverity(deviation, threshold),
+    severity,
     message: 'Head is leaning forward',
   }
 }
@@ -72,7 +100,10 @@ export function evaluateAllRules(
     enabled: boolean
     evaluate: () => RuleResult
   }> = [
-    { enabled: toggles.forwardHead, evaluate: () => forwardHeadRule(deviations.headForward, thresholds.forwardHead) },
+    { enabled: toggles.forwardHead, evaluate: () => forwardHeadRule(
+      { ffrDelta: deviations.faceFrameRatio, angleDelta: deviations.headForward },
+      thresholds.forwardHead, thresholds.forwardHeadFFR,
+    ) },
     { enabled: toggles.slouch, evaluate: () => slouchRule(deviations.torsoSlouch, thresholds.slouch) },
     { enabled: toggles.headTilt, evaluate: () => headTiltRule(deviations.headTilt, thresholds.headTilt) },
     { enabled: toggles.tooClose, evaluate: () => tooCloseRule(deviations.faceFrameRatio, thresholds.tooClose) },

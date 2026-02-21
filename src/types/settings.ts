@@ -43,6 +43,7 @@ export interface CalibrationData {
   readonly torsoAngle: number
   readonly headTiltAngle: number
   readonly faceFrameRatio: number
+  readonly faceY: number
   readonly shoulderDiff: number
   readonly timestamp: number
   readonly screenAngleReference?: {

@@ -68,6 +68,10 @@ export function faceToFrameRatio(
   return Math.abs(leftEar.x - rightEar.x)
 }
 
+export function faceY(normalizedLandmarks: readonly Landmark[]): number {
+  return normalizedLandmarks[PoseLandmarkIndex.NOSE].y
+}
+
 export function shoulderAsymmetry(worldLandmarks: readonly Landmark[]): number {
   const leftShoulder = worldLandmarks[PoseLandmarkIndex.LEFT_SHOULDER]
   const rightShoulder = worldLandmarks[PoseLandmarkIndex.RIGHT_SHOULDER]
@@ -86,6 +90,7 @@ export function extractPostureAngles(
     torsoAngle: torsoAngle(worldLandmarks),
     headTiltAngle: headTiltAngle(normalizedLandmarks),
     faceFrameRatio: faceToFrameRatio(normalizedLandmarks),
+    faceY: faceY(normalizedLandmarks),
     shoulderDiff: shoulderAsymmetry(worldLandmarks),
   }
 }

@@ -5,6 +5,7 @@ export interface PostureAngles {
   readonly torsoAngle: number
   readonly headTiltAngle: number
   readonly faceFrameRatio: number
+  readonly faceY: number
   readonly shoulderDiff: number
 }
 
@@ -13,6 +14,7 @@ export interface AngleDeviations {
   readonly torsoSlouch: number
   readonly headTilt: number
   readonly faceFrameRatio: number
+  readonly faceYDelta: number
   readonly shoulderDiff: number
 }
 

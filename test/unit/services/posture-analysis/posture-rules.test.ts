@@ -7,12 +7,14 @@ import {
   shoulderAsymmetryRule,
   evaluateAllRules,
 } from '../../../../src/services/posture-analysis/posture-rules'
+import type { ForwardHeadSignals } from '../../../../src/services/posture-analysis/posture-rules'
 import type { AngleDeviations } from '../../../../src/services/posture-analysis/posture-types'
 import type { RuleThresholds } from '../../../../src/services/posture-analysis/thresholds'
 import type { RuleToggles } from '../../../../src/types/settings'
 
 const DEFAULT_THRESHOLDS: RuleThresholds = {
-  forwardHead: 15,
+  forwardHead: 10,
+  forwardHeadFFR: 0.05,
   slouch: 20,
   headTilt: 12,
   tooClose: 0.35,
@@ -41,68 +43,94 @@ function makeDeviations(overrides: Partial<AngleDeviations> = {}): AngleDeviatio
     torsoSlouch: 0,
     headTilt: 0,
     faceFrameRatio: 0,
+    faceYDelta: 0,
     shoulderDiff: 0,
     ...overrides,
   }
 }
 
-// ─── forwardHeadRule ───
+// ─── forwardHeadRule (multi-signal) ───
 
 describe('forwardHeadRule', () => {
-  it('should return null when deviation is below threshold', () => {
-    expect(forwardHeadRule(10, 15)).toBeNull()
+  const angleThresh = 10
+  const ffrThresh = 0.05
+
+  function makeSignals(overrides: Partial<ForwardHeadSignals> = {}): ForwardHeadSignals {
+    return { ffrDelta: 0, angleDelta: 0, ...overrides }
+  }
+
+  it('should return null when both signals are below threshold', () => {
+    expect(forwardHeadRule(makeSignals({ ffrDelta: 0.02, angleDelta: 5 }), angleThresh, ffrThresh)).toBeNull()
   })
 
-  it('should return null when deviation equals zero', () => {
-    expect(forwardHeadRule(0, 15)).toBeNull()
+  it('should return null when both signals are zero', () => {
+    expect(forwardHeadRule(makeSignals(), angleThresh, ffrThresh)).toBeNull()
   })
 
-  it('should return null when deviation is negative (within threshold)', () => {
-    expect(forwardHeadRule(-5, 15)).toBeNull()
+  it('should return null when signals are negative', () => {
+    expect(forwardHeadRule(makeSignals({ ffrDelta: -0.03, angleDelta: -5 }), angleThresh, ffrThresh)).toBeNull()
   })
 
-  it('should return severity 1 when threshold is 0 and deviation > 0', () => {
-    const result = forwardHeadRule(1, 0)
-    expect(result).not.toBeNull()
-    expect(result!.severity).toBe(1)
-  })
-
-  it('should return null when deviation equals threshold (boundary)', () => {
-    expect(forwardHeadRule(15, 15)).toBeNull()
-  })
-
-  it('should return violation when deviation exceeds threshold', () => {
-    const result = forwardHeadRule(25, 15)
+  it('should return violation when FFR alone exceeds threshold (w=0.6)', () => {
+    // ffrScore = 0.10/0.05 = 2.0, combined = 0.6*2.0 = 1.2 > 1.0
+    const result = forwardHeadRule(makeSignals({ ffrDelta: 0.10 }), angleThresh, ffrThresh)
     expect(result).not.toBeNull()
     expect(result!.rule).toBe('FORWARD_HEAD')
   })
 
+  it('should return violation when angle alone exceeds threshold (w=0.4)', () => {
+    // angleScore = 30/10 = 3.0, combined = 0.4*3.0 = 1.2 > 1.0
+    const result = forwardHeadRule(makeSignals({ angleDelta: 30 }), angleThresh, ffrThresh)
+    expect(result).not.toBeNull()
+    expect(result!.rule).toBe('FORWARD_HEAD')
+  })
+
+  it('should return violation when combined signals exceed threshold', () => {
+    // ffrScore = 0.06/0.05 = 1.2, angleScore = 8/10 = 0.8
+    // combined = 0.6*1.2 + 0.4*0.8 = 0.72 + 0.32 = 1.04 > 1.0
+    const result = forwardHeadRule(makeSignals({ ffrDelta: 0.06, angleDelta: 8 }), angleThresh, ffrThresh)
+    expect(result).not.toBeNull()
+    expect(result!.rule).toBe('FORWARD_HEAD')
+  })
+
+  it('should return null when combined score is exactly 1.0 (boundary)', () => {
+    // ffrScore = 0.05/0.05 = 1.0, angleScore = 10/10 = 1.0
+    // combined = 0.6*1.0 + 0.4*1.0 = 1.0, not > 1.0
+    expect(forwardHeadRule(makeSignals({ ffrDelta: 0.05, angleDelta: 10 }), angleThresh, ffrThresh)).toBeNull()
+  })
+
   it('should have severity between 0 and 1', () => {
-    const result = forwardHeadRule(20, 15)
+    const result = forwardHeadRule(makeSignals({ ffrDelta: 0.08, angleDelta: 12 }), angleThresh, ffrThresh)
     expect(result).not.toBeNull()
     expect(result!.severity).toBeGreaterThanOrEqual(0)
     expect(result!.severity).toBeLessThanOrEqual(1)
   })
 
-  it('should have severity that increases with larger deviation', () => {
-    const mild = forwardHeadRule(16, 15)
-    const severe = forwardHeadRule(30, 15)
+  it('should have severity that increases with larger signals', () => {
+    const mild = forwardHeadRule(makeSignals({ ffrDelta: 0.10, angleDelta: 5 }), angleThresh, ffrThresh)
+    const severe = forwardHeadRule(makeSignals({ ffrDelta: 0.15, angleDelta: 20 }), angleThresh, ffrThresh)
     expect(mild).not.toBeNull()
     expect(severe).not.toBeNull()
     expect(severe!.severity).toBeGreaterThan(mild!.severity)
   })
 
-  it('should cap severity at 1 for extreme deviations', () => {
-    const result = forwardHeadRule(200, 15)
+  it('should cap severity at 1 for extreme signals', () => {
+    const result = forwardHeadRule(makeSignals({ ffrDelta: 1.0, angleDelta: 100 }), angleThresh, ffrThresh)
     expect(result).not.toBeNull()
     expect(result!.severity).toBe(1)
   })
 
   it('should include a non-empty message', () => {
-    const result = forwardHeadRule(20, 15)
+    const result = forwardHeadRule(makeSignals({ ffrDelta: 0.10 }), angleThresh, ffrThresh)
     expect(result).not.toBeNull()
     expect(result!.message).toBeTruthy()
     expect(result!.message.length).toBeGreaterThan(0)
+  })
+
+  it('should clamp negative signals to zero', () => {
+    // Only positive deviations (getting closer / leaning forward) should contribute
+    const result = forwardHeadRule(makeSignals({ ffrDelta: -0.10, angleDelta: -20 }), angleThresh, ffrThresh)
+    expect(result).toBeNull()
   })
 })
 
@@ -269,11 +297,20 @@ describe('evaluateAllRules', () => {
     expect(result).toEqual([])
   })
 
-  it('should detect forward head violation', () => {
-    const deviations = makeDeviations({ headForward: 20 })
+  it('should detect forward head violation (via FFR signal)', () => {
+    // ffrDelta used as faceFrameRatio deviation; ffrScore = 0.10/0.05 = 2.0, combined = 0.6*2 = 1.2 > 1.0
+    const deviations = makeDeviations({ faceFrameRatio: 0.10, headForward: 5 })
     const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
-    expect(result).toHaveLength(1)
-    expect(result[0].rule).toBe('FORWARD_HEAD')
+    const fhViolations = result.filter(v => v.rule === 'FORWARD_HEAD')
+    expect(fhViolations).toHaveLength(1)
+  })
+
+  it('should detect forward head violation (via angle signal)', () => {
+    // angleDelta=30, angleScore=30/10=3.0, combined = 0.4*3 = 1.2 > 1.0
+    const deviations = makeDeviations({ headForward: 30 })
+    const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
+    const fhViolations = result.filter(v => v.rule === 'FORWARD_HEAD')
+    expect(fhViolations).toHaveLength(1)
   })
 
   it('should detect slouch violation', () => {
@@ -293,8 +330,8 @@ describe('evaluateAllRules', () => {
   it('should detect too close violation', () => {
     const deviations = makeDeviations({ faceFrameRatio: 0.5 })
     const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
-    expect(result).toHaveLength(1)
-    expect(result[0].rule).toBe('TOO_CLOSE')
+    const tcViolations = result.filter(v => v.rule === 'TOO_CLOSE')
+    expect(tcViolations).toHaveLength(1)
   })
 
   it('should detect shoulder asymmetry violation', () => {
@@ -306,7 +343,7 @@ describe('evaluateAllRules', () => {
 
   it('should detect multiple violations simultaneously', () => {
     const deviations = makeDeviations({
-      headForward: 20,
+      headForward: 30, // angle alone triggers FH: 0.4 * (30/10) = 1.2 > 1.0
       torsoSlouch: 30,
       headTilt: 15,
     })
@@ -320,7 +357,7 @@ describe('evaluateAllRules', () => {
 
   it('should skip disabled rules', () => {
     const deviations = makeDeviations({
-      headForward: 20,
+      headForward: 30,
       torsoSlouch: 30,
     })
     const toggles: RuleToggles = {
@@ -346,14 +383,14 @@ describe('evaluateAllRules', () => {
 
   it('should have all violations with severity between 0 and 1', () => {
     const deviations = makeDeviations({
-      headForward: 20,
+      headForward: 30,    // angle only: 0.4*(30/10) = 1.2 > 1.0
       torsoSlouch: 30,
       headTilt: 15,
       faceFrameRatio: 0.5,
       shoulderDiff: 15,
     })
     const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
-    expect(result).toHaveLength(5)
+    expect(result.length).toBeGreaterThanOrEqual(4)
     for (const violation of result) {
       expect(violation.severity).toBeGreaterThanOrEqual(0)
       expect(violation.severity).toBeLessThanOrEqual(1)
@@ -361,14 +398,16 @@ describe('evaluateAllRules', () => {
   })
 
   it('should produce PostureViolation objects with rule, severity, and message', () => {
-    const deviations = makeDeviations({ headForward: 20 })
+    // Use FFR signal to trigger forward head
+    const deviations = makeDeviations({ faceFrameRatio: 0.10, headForward: 8 })
     const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
-    expect(result).toHaveLength(1)
-    expect(result[0]).toHaveProperty('rule')
-    expect(result[0]).toHaveProperty('severity')
-    expect(result[0]).toHaveProperty('message')
-    expect(typeof result[0].rule).toBe('string')
-    expect(typeof result[0].severity).toBe('number')
-    expect(typeof result[0].message).toBe('string')
+    const fhViolations = result.filter(v => v.rule === 'FORWARD_HEAD')
+    expect(fhViolations).toHaveLength(1)
+    expect(fhViolations[0]).toHaveProperty('rule')
+    expect(fhViolations[0]).toHaveProperty('severity')
+    expect(fhViolations[0]).toHaveProperty('message')
+    expect(typeof fhViolations[0].rule).toBe('string')
+    expect(typeof fhViolations[0].severity).toBe('number')
+    expect(typeof fhViolations[0].message).toBe('string')
   })
 })

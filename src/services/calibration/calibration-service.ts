@@ -13,6 +13,7 @@ const ANGLE_KEYS: ReadonlyArray<keyof PostureAngles> = [
   'torsoAngle',
   'headTiltAngle',
   'faceFrameRatio',
+  'faceY',
   'shoulderDiff',
 ] as const
 
@@ -124,6 +125,7 @@ export class CalibrationService {
       torsoAngle: means.torsoAngle,
       headTiltAngle: means.headTiltAngle,
       faceFrameRatio: means.faceFrameRatio,
+      faceY: means.faceY,
       shoulderDiff: means.shoulderDiff,
       timestamp: Date.now(),
       screenAngleReferences,
@@ -145,6 +147,7 @@ export class CalibrationService {
       torsoAngle: means.torsoAngle,
       headTiltAngle: means.headTiltAngle,
       faceFrameRatio: means.faceFrameRatio,
+      faceY: means.faceY,
       shoulderDiff: means.shoulderDiff,
       timestamp: Date.now(),
     }

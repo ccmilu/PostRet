@@ -1,5 +1,6 @@
 export interface RuleThresholds {
   readonly forwardHead: number
+  readonly forwardHeadFFR: number
   readonly slouch: number
   readonly headTilt: number
   readonly tooClose: number
@@ -8,9 +9,10 @@ export interface RuleThresholds {
 
 export const DEFAULT_THRESHOLDS: RuleThresholds = {
   forwardHead: 8,
+  forwardHeadFFR: 0.04,
   slouch: 20,
   headTilt: 8,
-  tooClose: 0.25,
+  tooClose: 0.10,
   shoulderAsymmetry: 10,
 }
 
@@ -20,6 +22,7 @@ export function getScaledThresholds(sensitivity: number): RuleThresholds {
 
   return {
     forwardHead: DEFAULT_THRESHOLDS.forwardHead * scale,
+    forwardHeadFFR: DEFAULT_THRESHOLDS.forwardHeadFFR * scale,
     slouch: DEFAULT_THRESHOLDS.slouch * scale,
     headTilt: DEFAULT_THRESHOLDS.headTilt * scale,
     tooClose: DEFAULT_THRESHOLDS.tooClose * scale,

@@ -36,6 +36,7 @@ const JITTER_THRESHOLDS = {
   torso: 1.0,
   headTilt: 1.0,
   faceFrameRatio: 0.02,
+  faceY: 0.02,
   shoulderDiff: 1.0,
 } as const
 
@@ -48,6 +49,8 @@ interface SmoothingFilters {
   readonly headTiltJitter: JitterFilter
   readonly faceRatioEma: EMAFilter
   readonly faceRatioJitter: JitterFilter
+  readonly faceYEma: EMAFilter
+  readonly faceYJitter: JitterFilter
   readonly shoulderEma: EMAFilter
   readonly shoulderJitter: JitterFilter
 }
@@ -62,6 +65,8 @@ function createFilters(): SmoothingFilters {
     headTiltJitter: new JitterFilter(JITTER_THRESHOLDS.headTilt),
     faceRatioEma: new EMAFilter(EMA_ALPHA),
     faceRatioJitter: new JitterFilter(JITTER_THRESHOLDS.faceFrameRatio),
+    faceYEma: new EMAFilter(EMA_ALPHA),
+    faceYJitter: new JitterFilter(JITTER_THRESHOLDS.faceY),
     shoulderEma: new EMAFilter(EMA_ALPHA),
     shoulderJitter: new JitterFilter(JITTER_THRESHOLDS.shoulderDiff),
   }
@@ -76,6 +81,8 @@ function resetFilters(filters: SmoothingFilters): void {
   filters.headTiltJitter.reset()
   filters.faceRatioEma.reset()
   filters.faceRatioJitter.reset()
+  filters.faceYEma.reset()
+  filters.faceYJitter.reset()
   filters.shoulderEma.reset()
   filters.shoulderJitter.reset()
 }
@@ -148,6 +155,7 @@ export class PostureAnalyzer {
         torsoAngle: 0,
         headTiltAngle: 0,
         faceFrameRatio: 0,
+        faceY: 0,
         shoulderDiff: 0,
       }
       const zeroDeviations: AngleDeviations = {
@@ -155,6 +163,7 @@ export class PostureAnalyzer {
         torsoSlouch: 0,
         headTilt: 0,
         faceFrameRatio: 0,
+        faceYDelta: 0,
         shoulderDiff: 0,
       }
       return {
@@ -183,6 +192,9 @@ export class PostureAnalyzer {
     const smoothedFaceRatio = this.filters.faceRatioJitter.update(
       this.filters.faceRatioEma.update(compensatedAngles.faceFrameRatio)
     )
+    const smoothedFaceY = this.filters.faceYJitter.update(
+      this.filters.faceYEma.update(compensatedAngles.faceY)
+    )
     const smoothedShoulderDiff = this.filters.shoulderJitter.update(
       this.filters.shoulderEma.update(compensatedAngles.shoulderDiff)
     )
@@ -192,6 +204,7 @@ export class PostureAnalyzer {
       torsoAngle: smoothedTorso,
       headTiltAngle: smoothedHeadTilt,
       faceFrameRatio: smoothedFaceRatio,
+      faceY: smoothedFaceY,
       shoulderDiff: smoothedShoulderDiff,
     }
 
@@ -203,7 +216,8 @@ export class PostureAnalyzer {
       headForward: smoothedHeadForward - currentBaseline.headForwardAngle,
       torsoSlouch: smoothedTorso - currentBaseline.torsoAngle,
       headTilt: smoothedHeadTilt - currentBaseline.headTiltAngle,
-      faceFrameRatio: smoothedFaceRatio,
+      faceFrameRatio: smoothedFaceRatio - currentBaseline.faceFrameRatio,
+      faceYDelta: smoothedFaceY - currentBaseline.faceY,
       shoulderDiff: Math.abs(smoothedShoulderDiff - currentBaseline.shoulderDiff),
     }
 

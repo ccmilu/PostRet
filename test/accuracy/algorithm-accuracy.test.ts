@@ -53,6 +53,7 @@ function computeCalibrationBaseline(
     torsoAngle: 0,
     headTiltAngle: 0,
     faceFrameRatio: 0,
+    faceY: 0,
     shoulderDiff: 0,
   };
 
@@ -63,6 +64,7 @@ function computeCalibrationBaseline(
     sums.torsoAngle += angles.torsoAngle;
     sums.headTiltAngle += angles.headTiltAngle;
     sums.faceFrameRatio += angles.faceFrameRatio;
+    sums.faceY += angles.faceY;
     sums.shoulderDiff += angles.shoulderDiff;
   }
 
@@ -72,6 +74,7 @@ function computeCalibrationBaseline(
     torsoAngle: sums.torsoAngle / n,
     headTiltAngle: sums.headTiltAngle / n,
     faceFrameRatio: sums.faceFrameRatio / n,
+    faceY: sums.faceY / n,
     shoulderDiff: sums.shoulderDiff / n,
   };
 }
@@ -89,7 +92,8 @@ function analyzePhoto(
     headForward: angles.headForwardAngle - baseline.headForwardAngle,
     torsoSlouch: angles.torsoAngle - baseline.torsoAngle,
     headTilt: angles.headTiltAngle - baseline.headTiltAngle,
-    faceFrameRatio: angles.faceFrameRatio,
+    faceFrameRatio: angles.faceFrameRatio - baseline.faceFrameRatio,
+    faceYDelta: angles.faceY - baseline.faceY,
     shoulderDiff: Math.abs(angles.shoulderDiff - baseline.shoulderDiff),
   };
 
