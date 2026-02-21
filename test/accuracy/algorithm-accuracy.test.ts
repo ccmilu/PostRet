@@ -57,8 +57,8 @@ function computeCalibrationBaseline(
   };
 
   for (const photo of goodPhotos) {
-    const { worldLandmarks, frameWidth } = photo.landmarkData;
-    const angles = extractPostureAngles(worldLandmarks, frameWidth);
+    const { landmarks, worldLandmarks } = photo.landmarkData;
+    const angles = extractPostureAngles(worldLandmarks, landmarks);
     sums.headForwardAngle += angles.headForwardAngle;
     sums.torsoAngle += angles.torsoAngle;
     sums.headTiltAngle += angles.headTiltAngle;
@@ -82,8 +82,8 @@ function analyzePhoto(
   thresholds: RuleThresholds,
   toggles: RuleToggles,
 ): PhotoResult {
-  const { worldLandmarks, frameWidth } = photo.landmarkData;
-  const angles = extractPostureAngles(worldLandmarks, frameWidth);
+  const { landmarks, worldLandmarks } = photo.landmarkData;
+  const angles = extractPostureAngles(worldLandmarks, landmarks);
 
   const deviations: AngleDeviations = {
     headForward: angles.headForwardAngle - baseline.headForwardAngle,

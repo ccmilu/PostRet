@@ -42,31 +42,30 @@ export function torsoAngle(worldLandmarks: readonly Landmark[]): number {
   return toDegrees(vectorAngle(shoulderToHip, VERTICAL_DOWN))
 }
 
-export function headTiltAngle(worldLandmarks: readonly Landmark[]): number {
-  const leftEar = worldLandmarks[PoseLandmarkIndex.LEFT_EAR]
-  const rightEar = worldLandmarks[PoseLandmarkIndex.RIGHT_EAR]
+export function headTiltAngle(normalizedLandmarks: readonly Landmark[]): number {
+  const leftEar = normalizedLandmarks[PoseLandmarkIndex.LEFT_EAR]
+  const rightEar = normalizedLandmarks[PoseLandmarkIndex.RIGHT_EAR]
 
-  // Use right-to-left direction so dx is positive when ears are in natural position
-  // (leftEar.x < rightEar.x in MediaPipe mirrored coords is not guaranteed,
-  // but rightEar.x - leftEar.x gives positive dx for standard facing-camera pose)
+  // In MediaPipe's non-mirrored output, the person's left ear appears on the
+  // right side of the frame (higher x), so leftEar.x > rightEar.x.
+  // Using dx = leftEar.x - rightEar.x gives positive dx for upright posture,
+  // making atan2 return ~0 degrees when ears are level.
+  // Positive result = left ear lower (tilting left), negative = tilting right.
   const dy = leftEar.y - rightEar.y
-  const dx = rightEar.x - leftEar.x
+  const dx = leftEar.x - rightEar.x
 
   return toDegrees(Math.atan2(dy, dx))
 }
 
 export function faceToFrameRatio(
-  worldLandmarks: readonly Landmark[],
-  frameWidth: number
+  normalizedLandmarks: readonly Landmark[],
 ): number {
-  if (frameWidth === 0) {
-    return 0
-  }
+  const leftEar = normalizedLandmarks[PoseLandmarkIndex.LEFT_EAR]
+  const rightEar = normalizedLandmarks[PoseLandmarkIndex.RIGHT_EAR]
 
-  const leftEar = worldLandmarks[PoseLandmarkIndex.LEFT_EAR]
-  const rightEar = worldLandmarks[PoseLandmarkIndex.RIGHT_EAR]
-
-  return Math.abs(leftEar.x - rightEar.x) / frameWidth
+  // Normalized landmarks have x in [0, 1] relative to frame width,
+  // so |leftEar.x - rightEar.x| directly gives face-to-frame ratio.
+  return Math.abs(leftEar.x - rightEar.x)
 }
 
 export function shoulderAsymmetry(worldLandmarks: readonly Landmark[]): number {
@@ -80,13 +79,13 @@ export function shoulderAsymmetry(worldLandmarks: readonly Landmark[]): number {
 
 export function extractPostureAngles(
   worldLandmarks: readonly Landmark[],
-  frameWidth: number
+  normalizedLandmarks: readonly Landmark[],
 ): PostureAngles {
   return {
     headForwardAngle: headForwardAngle(worldLandmarks),
     torsoAngle: torsoAngle(worldLandmarks),
-    headTiltAngle: headTiltAngle(worldLandmarks),
-    faceFrameRatio: faceToFrameRatio(worldLandmarks, frameWidth),
+    headTiltAngle: headTiltAngle(normalizedLandmarks),
+    faceFrameRatio: faceToFrameRatio(normalizedLandmarks),
     shoulderDiff: shoulderAsymmetry(worldLandmarks),
   }
 }

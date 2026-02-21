@@ -4,6 +4,13 @@ import type { DetectionFrame, Landmark } from '@/services/pose-detection/pose-ty
 import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { CalibrationData, RuleToggles } from '@/types/settings'
 import type { ScreenAngleReference } from '@/services/calibration/screen-angle-estimator'
+import { extractPostureAngles } from '@/services/posture-analysis/angle-calculator'
+import {
+  loadLandmarks,
+  loadLandmarksWithMetadata,
+  loadLandmarksByCategory,
+  toDetectionFrame,
+} from '../../../helpers/load-landmarks'
 
 function createMockFrame(overrides?: {
   landmarks?: Partial<Record<number, Partial<Landmark>>>
@@ -23,14 +30,15 @@ function createMockFrame(overrides?: {
   }
 
   // Normalized landmarks for screen angle estimation (face features)
+  // In MediaPipe non-mirrored: leftEar.x > rightEar.x, leftEye.x > rightEye.x
   const goodNormLandmarks: Partial<Record<number, Partial<Landmark>>> = {
     [PoseLandmarkIndex.NOSE]: { x: 0.5, y: 0.35, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.LEFT_EYE]: { x: 0.45, y: 0.30, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.RIGHT_EYE]: { x: 0.55, y: 0.30, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.LEFT_EAR]: { x: 0.38, y: 0.33, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.62, y: 0.33, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.MOUTH_LEFT]: { x: 0.46, y: 0.42, z: 0, visibility: 1.0 },
-    [PoseLandmarkIndex.MOUTH_RIGHT]: { x: 0.54, y: 0.42, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.LEFT_EYE]: { x: 0.55, y: 0.30, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.RIGHT_EYE]: { x: 0.45, y: 0.30, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.LEFT_EAR]: { x: 0.62, y: 0.33, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.38, y: 0.33, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.MOUTH_LEFT]: { x: 0.54, y: 0.42, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.MOUTH_RIGHT]: { x: 0.46, y: 0.42, z: 0, visibility: 1.0 },
   }
 
   const mergedWorld = { ...goodWorldPosture, ...overrides?.worldLandmarks }
@@ -59,7 +67,7 @@ function createGoodCalibration(): CalibrationData {
     headForwardAngle: 0,
     torsoAngle: 0,
     headTiltAngle: 0,
-    faceFrameRatio: 0.16 / 640,
+    faceFrameRatio: 0.24, // |0.62 - 0.38| from normalized landmarks
     shoulderDiff: 0,
     timestamp: Date.now(),
   }
@@ -109,12 +117,12 @@ describe('PostureAnalyzer — screen angle compensation integration', () => {
       const tiltedFrame = createMockFrame({
         landmarks: {
           [PoseLandmarkIndex.NOSE]: { x: 0.5, y: 0.45, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.LEFT_EYE]: { x: 0.45, y: 0.40, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.RIGHT_EYE]: { x: 0.55, y: 0.40, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.LEFT_EAR]: { x: 0.38, y: 0.43, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.62, y: 0.43, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.MOUTH_LEFT]: { x: 0.46, y: 0.52, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.MOUTH_RIGHT]: { x: 0.54, y: 0.52, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.LEFT_EYE]: { x: 0.55, y: 0.40, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.RIGHT_EYE]: { x: 0.45, y: 0.40, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.LEFT_EAR]: { x: 0.62, y: 0.43, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.38, y: 0.43, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.MOUTH_LEFT]: { x: 0.54, y: 0.52, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.MOUTH_RIGHT]: { x: 0.46, y: 0.52, z: 0, visibility: 1.0 },
         },
       })
 
@@ -242,6 +250,95 @@ describe('PostureAnalyzer — screen angle compensation integration', () => {
       const result = feedFrames(analyzer, frame, 10)
       // Should work without errors after calibration update
       expect(result.status).toBeDefined()
+    })
+  })
+
+  // ============================================================
+  // Real photo landmarks — integration tests
+  // ============================================================
+
+  describe('real photos — full pipeline integration', () => {
+    function createCalibrationFromPhoto(photoId: number): CalibrationData {
+      const data = loadLandmarks(photoId)
+      const angles = extractPostureAngles(data.worldLandmarks, data.landmarks)
+      return {
+        headForwardAngle: angles.headForwardAngle,
+        torsoAngle: angles.torsoAngle,
+        headTiltAngle: angles.headTiltAngle,
+        faceFrameRatio: angles.faceFrameRatio,
+        shoulderDiff: angles.shoulderDiff,
+        timestamp: Date.now(),
+      }
+    }
+
+    it('calibrate with photo 1, feed good posture photos → all isGood=true', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const goodPhotos = loadLandmarksByCategory('good')
+        .filter(p => p.metadata.lighting === 'normal')
+
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const frame = toDetectionFrame(landmarkData)
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+        const result = feedFrames(analyzer, frame, 10)
+        expect(result.status.isGood, `Photo ${metadata.photoId}: ${metadata.notes}`).toBe(true)
+      }
+    })
+
+    it('calibrate with photo 1, feed severe forward_head → FORWARD_HEAD detected', () => {
+      const cal = createCalibrationFromPhoto(1)
+      // Photo 13 = severe forward head, Photo 14 = moderate with extreme angle
+      for (const photoId of [13, 14]) {
+        const { landmarkData, metadata } = loadLandmarksWithMetadata(photoId)
+        const frame = toDetectionFrame(landmarkData)
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+        const result = feedFrames(analyzer, frame, 15)
+        expect(
+          result.status.violations.some(v => v.rule === 'FORWARD_HEAD'),
+          `Photo ${photoId}: ${metadata.notes} should detect FORWARD_HEAD`,
+        ).toBe(true)
+      }
+    })
+
+    it('screen angle compensation with real landmarks does not crash', () => {
+      const calData = loadLandmarks(1)
+      const cal = createCalibrationFromPhoto(1)
+      const signals = {
+        faceY: calData.landmarks[PoseLandmarkIndex.NOSE].y,
+        noseChinRatio: 0.47,
+        eyeMouthRatio: 0.75,
+      }
+
+      const analyzer = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON, {
+        screenAngleReference: signals,
+      })
+
+      // Feed different real photos — should not throw
+      for (const photoId of [1, 5, 11, 21]) {
+        const data = loadLandmarks(photoId)
+        const frame = toDetectionFrame(data)
+        const result = analyzer.analyzeDetailed(frame)
+        expect(result.status).toBeDefined()
+        expect(Number.isFinite(result.angles.headForwardAngle)).toBe(true)
+      }
+    })
+
+    it('adaptive baseline: sustained good posture through real photo data', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const analyzer = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+
+      const goodData = loadLandmarks(1)
+      let ts = 1000
+
+      // Feed 60 frames at 500ms intervals (30 seconds) with same good posture
+      for (let i = 0; i < 60; i++) {
+        ts += 500
+        const frame = toDetectionFrame(goodData, ts)
+        analyzer.analyzeDetailed(frame)
+      }
+
+      // After 30 seconds, analyzer should still report good for same data
+      const finalResult = analyzer.analyzeDetailed(toDetectionFrame(goodData, ts + 500))
+      expect(finalResult.status.isGood).toBe(true)
     })
   })
 })
