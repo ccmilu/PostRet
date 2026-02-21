@@ -1,6 +1,6 @@
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act, waitFor, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { createElement } from 'react'
+import { createElement, useEffect, useRef } from 'react'
 import { useSettings, SettingsProvider } from '@/hooks/useSettings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 import type { PostureSettings } from '@/types/settings'
@@ -302,6 +302,110 @@ describe('useSettings', () => {
       expect(result.current.settings).not.toBe(firstSettings)
       expect(result.current.settings.advanced.debugMode).toBe(true)
       expect(firstSettings.advanced.debugMode).toBe(false)
+    })
+  })
+
+  describe('SettingsProvider singleton behavior', () => {
+    it('should provide the same settings reference to two components under the same provider', async () => {
+      // Two independent hooks rendered under the same SettingsProvider
+      // should read from the same shared state.
+      const settingsA: PostureSettings[] = []
+      const settingsB: PostureSettings[] = []
+
+      function ComponentA() {
+        const { settings } = useSettings()
+        // Capture into outer array via ref to avoid re-render loops
+        const captured = useRef(false)
+        useEffect(() => {
+          if (!captured.current) {
+            captured.current = true
+            settingsA.push(settings)
+          }
+        }, [settings])
+        return createElement('div', { 'data-testid': 'a' })
+      }
+
+      function ComponentB() {
+        const { settings } = useSettings()
+        const captured = useRef(false)
+        useEffect(() => {
+          if (!captured.current) {
+            captured.current = true
+            settingsB.push(settings)
+          }
+        }, [settings])
+        return createElement('div', { 'data-testid': 'b' })
+      }
+
+      render(
+        createElement(
+          SettingsProvider,
+          null,
+          createElement(ComponentA),
+          createElement(ComponentB),
+        ),
+      )
+
+      await waitFor(() => {
+        expect(settingsA.length).toBeGreaterThan(0)
+        expect(settingsB.length).toBeGreaterThan(0)
+      })
+
+      // Both components should see the exact same object reference
+      expect(settingsA[0]).toBe(settingsB[0])
+    })
+
+    it('should reflect updateDetection from one component in another component', async () => {
+      window.electronAPI = createMockElectronAPI()
+
+      let updateFn: ((partial: { sensitivity: number }) => Promise<void>) | null = null
+      let readSettings: PostureSettings | null = null
+
+      function Writer() {
+        const { updateDetection } = useSettings()
+        updateFn = updateDetection
+        return createElement('div')
+      }
+
+      function Reader() {
+        const { settings } = useSettings()
+        readSettings = settings
+        return createElement('div')
+      }
+
+      render(
+        createElement(
+          SettingsProvider,
+          null,
+          createElement(Writer),
+          createElement(Reader),
+        ),
+      )
+
+      // Wait for initial load to complete
+      await waitFor(() => {
+        expect(readSettings).not.toBeNull()
+        expect(updateFn).not.toBeNull()
+      })
+
+      // Writer updates detection sensitivity
+      await act(async () => {
+        await updateFn!({ sensitivity: 0.99 })
+      })
+
+      // Reader should see the updated value
+      expect(readSettings!.detection.sensitivity).toBe(0.99)
+    })
+
+    it('should throw error when useSettings is used outside SettingsProvider', () => {
+      // Suppress React error boundary console output for this test
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      expect(() => {
+        renderHook(() => useSettings())
+      }).toThrow('useSettings must be used within a <SettingsProvider>')
+
+      consoleSpy.mockRestore()
     })
   })
 })

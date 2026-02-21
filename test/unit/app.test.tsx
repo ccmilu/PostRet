@@ -352,4 +352,87 @@ describe('App', () => {
       expect(mockDetection.start).not.toHaveBeenCalled()
     })
   })
+
+  describe('calibration-to-detection integration', () => {
+    it('should start detection when calibration data exists and enabled is true', () => {
+      // Initial state: has calibration data + enabled=true + idle => detection.start() called
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: true },
+      }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      render(<App />)
+
+      expect(mockDetection.start).toHaveBeenCalledTimes(1)
+      expect(mockDetection.start).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        mockSettings.detection,
+      )
+    })
+
+    it('should reload settings after calibration completes and auto-start detection', async () => {
+      // Start with no calibration data
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: null }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      const user = userEvent.setup()
+      const { rerender } = render(<App />)
+
+      // detection should NOT have started (no calibration data)
+      expect(mockDetection.start).not.toHaveBeenCalled()
+
+      // Navigate to calibration
+      await user.click(screen.getByTestId('start-calibration-btn'))
+      expect(screen.getByTestId('calibration-page')).toBeTruthy()
+
+      // Complete calibration — this triggers reloadSettings
+      await user.click(screen.getByTestId('calibration-complete-btn'))
+
+      // reloadSettings should have been called
+      expect(mockUseSettings.reloadSettings).toHaveBeenCalled()
+
+      // Simulate what reloadSettings does: settings now include calibration
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: true },
+      }
+
+      // Re-render to reflect updated settings
+      rerender(<App />)
+
+      // Now detection.start should be called because calibration data is available
+      expect(mockDetection.start).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        expect.objectContaining({ enabled: true }),
+      )
+    })
+
+    it('should report posture status when detection is in detecting state (via mock)', () => {
+      // When detection is in 'detecting' state, the App syncs settings and
+      // calibration. This test verifies that updateDetectionSettings and
+      // updateCalibration are called when state is 'detecting'.
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: true },
+      }
+      mockLoading = false
+      mockDetection.state = 'detecting'
+
+      render(<App />)
+
+      // The App should sync detection settings and calibration when detecting
+      expect(mockDetection.updateDetectionSettings).toHaveBeenCalledWith(
+        mockSettings.detection,
+      )
+      expect(mockDetection.updateCalibration).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+      )
+    })
+  })
 })

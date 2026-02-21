@@ -435,6 +435,55 @@ describe('useCalibration', () => {
       expect(mockStartCalibration).toHaveBeenCalledTimes(1)
     })
 
+    it('should progress gradually from 0 to ~0.5 at halfway and ~1.0 at completion (not jump from 0 to 1)', async () => {
+      const videoRef = createVideoRefWithElement()
+      const mockCompleteCalibration = vi.fn().mockResolvedValue(undefined)
+      window.electronAPI = createMockElectronAPI({
+        completeCalibration: mockCompleteCalibration,
+      })
+
+      mockDetect.mockReturnValue(createMockFrame())
+
+      const { result } = renderHook(() => useCalibration({ videoRef }))
+
+      // Start calibration and let the async initialization complete
+      await act(async () => {
+        result.current.startCalibration()
+        await vi.advanceTimersByTimeAsync(50)
+      })
+
+      expect(result.current.status).toBe('collecting')
+      expect(result.current.progress).toBe(0)
+
+      // Advance ~1500ms (about 15 samples out of 30) => progress ~0.5
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500)
+      })
+
+      expect(result.current.status).toBe('collecting')
+      expect(result.current.progress).toBeGreaterThanOrEqual(0.4)
+      expect(result.current.progress).toBeLessThanOrEqual(0.6)
+
+      // Advance the rest (~1500ms more, total ~3000ms, 30 samples) => progress = 1.0
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1600)
+      })
+
+      expect(result.current.progress).toBe(1)
+      expect(result.current.status).toBe('completed')
+
+      // completeCalibration must have been called with valid CalibrationData
+      expect(mockCompleteCalibration).toHaveBeenCalledTimes(1)
+      const baseline = mockCompleteCalibration.mock.calls[0][0]
+      expect(baseline).toHaveProperty('headForwardAngle')
+      expect(baseline).toHaveProperty('torsoAngle')
+      expect(baseline).toHaveProperty('headTiltAngle')
+      expect(baseline).toHaveProperty('faceFrameRatio')
+      expect(baseline).toHaveProperty('shoulderDiff')
+      expect(baseline).toHaveProperty('timestamp')
+      expect(typeof baseline.timestamp).toBe('number')
+    })
+
     it('progress should increase monotonically from 0 to 1', async () => {
       const videoRef = createVideoRefWithElement()
       window.electronAPI = createMockElectronAPI()
