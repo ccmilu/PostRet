@@ -26,6 +26,7 @@ export interface ReminderSettings {
   readonly sound: boolean
   readonly notification: boolean
   readonly delayMs: number
+  readonly fadeOutDurationMs: number
 }
 
 export interface CalibrationData {
@@ -70,6 +71,7 @@ export const DEFAULT_SETTINGS: PostureSettings = {
     sound: false,
     notification: true,
     delayMs: 5000,
+    fadeOutDurationMs: 1500,
   },
   calibration: null,
   display: {

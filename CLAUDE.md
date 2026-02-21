@@ -166,31 +166,55 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 核心算法（angle-calculator, posture-rules, smoothing）采用 TDD：先写测试再写实现。
 每完成一个 Phase 的功能，对照该 Phase 的"测试 & 验收"清单逐条确认。
 
-## Agent Browser 强制规则
+## Agent Browser 规则
 
-**所有涉及 UI 或视觉效果的功能，必须先通过 Agent Browser 交互式验证，再编写自动化测试脚本。** 这是强制要求，不可跳过。Agent Browser 通过 `agent-browser` skill 调用，基于 Bash 命令行，主会话和 teammate 均可使用。
+**所有涉及 UI 或视觉效果的功能，必须先通过 Agent Browser 交互式验证，再编写自动化测试脚本。** Agent Browser 通过 `agent-browser` skill 调用，基于 Bash 命令行，主会话和 teammate 均可使用。（如果要用到，在创建teammate时应该明确说明用这个skill）
 
-必须使用 Agent Browser 验证的场景（不限于此列表）：
-- 模糊覆盖窗口的视觉效果（Liquid Glass / 普通模糊）
-- 模糊的出现和渐变消除动画
-- 骨骼线叠加显示
+### 验证方式
+
+Agent Browser 通过 Vite dev server (`http://localhost:5173`) 访问 renderer 页面。需要先启动 dev server。
+
+截图保存到 `test/screenshots/` 目录下，按 Phase 或功能模块分子目录，如 `test/screenshots/phase-1-6/`、`test/screenshots/calibration/`。
+
+### 能力边界
+
+| 能验证（renderer 层 UI） | 不能验证（Electron 原生功能） |
+|-------------------------|---------------------------|
+| React 组件、页面布局、CSS 样式 | Tray 菜单 |
+| 设置页面、Tab 切换、表单控件交互 | 模糊覆盖窗口（BrowserWindow 层） |
+| 校准向导 UI 流程 | 系统通知 |
+| 截图 + AI 视觉判断 | Liquid Glass / macOS 原生效果 |
+| 骨骼线叠加显示 | — |
+
+**IPC 相关 UI**：Agent Browser 访问 Vite 页面时 preload 不加载，`window.electronAPI` 不存在。可通过 `agent-browser eval` 注入 mock，或改用 Playwright Electron E2E 脚本测试完整链路。
+
+### Electron 原生功能的测试方式
+
+Tray、系统通知、覆盖窗口等无法通过 Agent Browser 验证，使用以下方式：
+- **Vitest 单元测试** — mock Electron API，测试 main 进程逻辑
+- **Playwright Electron E2E 脚本** (`.spec.ts`) — 启动真实 Electron 实例，全链路可用
+
+### 必须使用 Agent Browser 验证的场景
+
 - 设置页面的布局、Tab 切换、控件交互
 - 校准向导的步骤流程和 UI 反馈
-- Tray 菜单的显示和交互
-- 系统通知的弹出
+- 骨骼线叠加显示
+- 其他 renderer 层 React UI
 
-可以跳过 Agent Browser、直接写脚本的场景：
+### 可以跳过 Agent Browser 的场景
+
 - 纯数据逻辑（IPC 通信、配置读写、数值计算）
 - 无 UI 的单元测试
+- Electron 原生功能（用 Vitest mock 或 Playwright E2E 脚本）
 
 ## 测试策略
 
-### E2E 测试两种工具
+### E2E 测试工具
 
 | 工具 | 适用场景 | 是否强制 |
 |------|---------|---------|
-| **Playwright MCP** (交互式) | 首次验证、视觉效果判断（截图+AI视觉）、探索性测试、调试 | **UI/视觉功能强制** |
-| **Playwright 脚本** (.spec.ts) | 回归测试、CI 自动运行、性能测试、大批量测试 | 所有 E2E 功能必须有脚本 |
+| **Agent Browser** (交互式) | renderer 层 UI 首次验证、视觉效果判断（截图+AI视觉）、探索性测试。主会话和 teammate 均可使用 | **renderer UI 强制** |
+| **Playwright Electron 脚本** (.spec.ts) | 回归测试、CI 自动运行、Electron 原生功能测试、IPC 全链路测试 | 所有 E2E 功能必须有脚本 |
 
 ### 摄像头模拟
 
