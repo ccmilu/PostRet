@@ -42,7 +42,7 @@ function buildReminderConfig(store: ConfigStore): ReminderConfig {
     notification: settings.reminder.notification,
     sound: settings.reminder.sound,
     delayMs: settings.reminder.delayMs,
-    fadeOutDurationMs: 1500,
+    fadeOutDurationMs: settings.reminder.fadeOutDurationMs,
   }
 }
 

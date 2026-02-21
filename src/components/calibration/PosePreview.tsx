@@ -61,7 +61,7 @@ const POSE_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [
   [PoseLandmarkIndex.RIGHT_ANKLE, PoseLandmarkIndex.RIGHT_FOOT_INDEX],
 ]
 
-const LEFT_SIDE_INDICES = new Set([
+const LEFT_SIDE_INDICES: Set<number> = new Set([
   PoseLandmarkIndex.LEFT_EAR,
   PoseLandmarkIndex.LEFT_EYE_INNER,
   PoseLandmarkIndex.LEFT_EYE,
@@ -79,7 +79,7 @@ const LEFT_SIDE_INDICES = new Set([
   PoseLandmarkIndex.LEFT_FOOT_INDEX,
 ])
 
-const RIGHT_SIDE_INDICES = new Set([
+const RIGHT_SIDE_INDICES: Set<number> = new Set([
   PoseLandmarkIndex.RIGHT_EAR,
   PoseLandmarkIndex.RIGHT_EYE_INNER,
   PoseLandmarkIndex.RIGHT_EYE,
@@ -97,7 +97,7 @@ const RIGHT_SIDE_INDICES = new Set([
   PoseLandmarkIndex.RIGHT_FOOT_INDEX,
 ])
 
-const TORSO_INDICES = new Set([
+const TORSO_INDICES: Set<number> = new Set([
   PoseLandmarkIndex.LEFT_SHOULDER,
   PoseLandmarkIndex.RIGHT_SHOULDER,
   PoseLandmarkIndex.LEFT_HIP,

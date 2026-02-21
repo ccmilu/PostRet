@@ -40,6 +40,8 @@ test('settings window opens and shows React content', async () => {
   const title = await window.title()
   expect(title).toContain('PostRet')
 
-  const heading = await window.textContent('h1')
-  expect(heading).toContain('PostRet')
+  // Settings layout should be rendered
+  await window.waitForSelector('[data-testid="settings-layout"]')
+  const layout = await window.locator('[data-testid="settings-layout"]').isVisible()
+  expect(layout).toBe(true)
 })
