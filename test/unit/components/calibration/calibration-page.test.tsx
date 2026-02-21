@@ -1,5 +1,4 @@
-import { render, screen, act } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { CalibrationPage } from '@/components/calibration/CalibrationPage'
 import type { CalibrationStatus } from '@/hooks/useCalibration'
 
@@ -25,6 +24,7 @@ const mockGetUserMedia = vi.fn()
 const mockPlay = vi.fn().mockResolvedValue(undefined)
 
 beforeEach(() => {
+  vi.useFakeTimers()
   mockStatus = 'idle'
   mockProgress = 0
   mockError = null
@@ -53,6 +53,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -67,7 +68,7 @@ describe('CalibrationPage', () => {
       expect(screen.getByText('姿态校准')).toBeInTheDocument()
     })
 
-    it('shows idle UI with hint text and start button', async () => {
+    it('shows idle UI with hint text and start button after camera ready', async () => {
       await act(async () => {
         render(<CalibrationPage />)
       })
@@ -78,13 +79,11 @@ describe('CalibrationPage', () => {
     })
 
     it('calls startCalibration when start button is clicked', async () => {
-      const user = userEvent.setup()
-
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      await user.click(screen.getByTestId('calibration-start-btn'))
+      fireEvent.click(screen.getByTestId('calibration-start-btn'))
 
       expect(mockStartCalibration).toHaveBeenCalledOnce()
     })
@@ -103,6 +102,112 @@ describe('CalibrationPage', () => {
       })
 
       expect(mockGetUserMedia).toHaveBeenCalledWith({ video: true })
+    })
+  })
+
+  describe('camera loading state', () => {
+    it('shows loading message on initial render before camera is ready', async () => {
+      // Make getUserMedia hang (never resolves)
+      mockGetUserMedia.mockReturnValue(new Promise(() => {}))
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      expect(screen.getByTestId('calibration-camera-loading')).toBeInTheDocument()
+      expect(screen.getByText('正在启动摄像头...')).toBeInTheDocument()
+      // Should NOT show error or idle UI
+      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('calibration-idle')).not.toBeInTheDocument()
+    })
+
+    it('does not flash error on first render', async () => {
+      // getUserMedia fails on first attempt but succeeds after retry
+      mockGetUserMedia
+        .mockRejectedValueOnce(new Error('NotReadableError'))
+        .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      // While retrying, should show loading, not error
+      expect(screen.getByTestId('calibration-camera-loading')).toBeInTheDocument()
+      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
+
+      // Advance past retry delay
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100)
+      })
+
+      // After successful retry, should show idle state
+      expect(screen.getByTestId('calibration-idle')).toBeInTheDocument()
+      expect(screen.queryByTestId('calibration-camera-error')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('camera auto-retry', () => {
+    it('retries getUserMedia automatically on first failure', async () => {
+      mockGetUserMedia
+        .mockRejectedValueOnce(new Error('NotReadableError'))
+        .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      // First call happened
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1)
+
+      // Advance past retry delay
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100)
+      })
+
+      // Second call happened (auto-retry)
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2)
+      // Camera is now working, show idle
+      expect(screen.getByTestId('calibration-idle')).toBeInTheDocument()
+    })
+
+    it('shows error only after all retry attempts are exhausted', async () => {
+      // All attempts fail (initial + 2 retries = 3 total)
+      mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      // Advance through all retry delays
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100)
+      })
+
+      // All 3 attempts made (initial + 2 retries)
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(3)
+      // Now shows error
+      expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
+      expect(screen.getByText(/Permission denied/)).toBeInTheDocument()
+    })
+
+    it('retries up to MAX_CAMERA_RETRIES times before showing error', async () => {
+      mockGetUserMedia.mockRejectedValue(new Error('Camera busy'))
+
+      await act(async () => {
+        render(<CalibrationPage />)
+      })
+
+      // Advance through all retries
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
+      // 1 initial + 2 retries = 3
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(3)
+      expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
     })
   })
 
@@ -179,14 +284,13 @@ describe('CalibrationPage', () => {
     })
 
     it('calls onComplete when back button is clicked', async () => {
-      const user = userEvent.setup()
       const onComplete = vi.fn()
 
       await act(async () => {
         render(<CalibrationPage onComplete={onComplete} />)
       })
 
-      await user.click(screen.getByTestId('calibration-back-btn'))
+      fireEvent.click(screen.getByTestId('calibration-back-btn'))
 
       expect(onComplete).toHaveBeenCalledOnce()
     })
@@ -218,24 +322,27 @@ describe('CalibrationPage', () => {
     })
 
     it('shows retry button that resets calibration', async () => {
-      const user = userEvent.setup()
-
       await act(async () => {
         render(<CalibrationPage />)
       })
 
-      await user.click(screen.getByTestId('calibration-retry-btn'))
+      fireEvent.click(screen.getByTestId('calibration-retry-btn'))
 
       expect(mockReset).toHaveBeenCalledOnce()
     })
   })
 
   describe('camera error', () => {
-    it('shows camera error when getUserMedia fails', async () => {
+    it('shows camera error when getUserMedia fails after retries', async () => {
       mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
 
       await act(async () => {
         render(<CalibrationPage />)
+      })
+
+      // Advance through all retries
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
       })
 
       expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
@@ -249,28 +356,35 @@ describe('CalibrationPage', () => {
         render(<CalibrationPage />)
       })
 
+      // Advance through all retries
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
       expect(screen.getByText(/无法访问摄像头/)).toBeInTheDocument()
     })
 
     it('retries camera when retry button is clicked on camera error', async () => {
-      const user = userEvent.setup()
-      mockGetUserMedia.mockRejectedValueOnce(new Error('Permission denied'))
+      mockGetUserMedia.mockRejectedValue(new Error('Permission denied'))
 
       await act(async () => {
         render(<CalibrationPage />)
       })
 
+      // Advance through all retries
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
       expect(screen.getByTestId('calibration-camera-error')).toBeInTheDocument()
 
-      // Reset getUserMedia to succeed on retry
+      // Reset getUserMedia to succeed on manual retry
       mockGetUserMedia.mockResolvedValueOnce({
         getTracks: () => [{ stop: vi.fn() }],
       })
 
-      await user.click(screen.getByTestId('calibration-retry-btn'))
+      fireEvent.click(screen.getByTestId('calibration-retry-btn'))
 
-      // getUserMedia called on mount + retry
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(2)
       expect(mockReset).toHaveBeenCalledOnce()
     })
   })

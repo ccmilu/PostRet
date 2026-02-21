@@ -37,6 +37,7 @@ const mockUseSettings: UseSettingsReturn = {
   updateSettings: vi.fn().mockResolvedValue(undefined),
   updateDetection: vi.fn().mockResolvedValue(undefined),
   updateReminder: vi.fn().mockResolvedValue(undefined),
+  reloadSettings: vi.fn().mockResolvedValue(undefined),
 }
 
 vi.mock('@/hooks/usePostureDetection', () => ({
@@ -206,6 +207,60 @@ describe('App', () => {
       await user.click(screen.getByTestId('start-calibration-btn'))
 
       expect(mockDetection.stop).toHaveBeenCalled()
+    })
+
+    it('should call reloadSettings when calibration completes', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      // Navigate to calibration
+      await user.click(screen.getByTestId('start-calibration-btn'))
+      expect(screen.getByTestId('calibration-page')).toBeTruthy()
+
+      // Complete calibration
+      await user.click(screen.getByTestId('calibration-complete-btn'))
+
+      // Should reload settings to pick up new calibration data
+      expect(mockUseSettings.reloadSettings).toHaveBeenCalled()
+    })
+
+    it('should return to settings page after calibration completes', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByTestId('start-calibration-btn'))
+      await user.click(screen.getByTestId('calibration-complete-btn'))
+
+      expect(screen.getByTestId('settings-layout')).toBeTruthy()
+    })
+
+    it('should auto-start detection after reload if calibration data is now available', () => {
+      // Simulate state after reloadSettings: calibration data exists
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      render(<App />)
+
+      // Detection should start because calibration data exists and state is idle
+      expect(mockDetection.start).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        mockSettings.detection,
+      )
+    })
+
+    it('should not auto-start detection if detection.enabled is false after reload', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      render(<App />)
+
+      expect(mockDetection.start).not.toHaveBeenCalled()
     })
   })
 })

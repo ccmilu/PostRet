@@ -188,6 +188,95 @@ describe('useSettings', () => {
     })
   })
 
+  describe('reloadSettings', () => {
+    it('should expose reloadSettings function', async () => {
+      const { result } = renderHook(() => useSettings())
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      expect(typeof result.current.reloadSettings).toBe('function')
+    })
+
+    it('should reload settings from electronAPI when called', async () => {
+      const calibrationData = {
+        headForwardAngle: 10,
+        torsoAngle: 5,
+        headTiltAngle: 0,
+        faceFrameRatio: 0.15,
+        shoulderDiff: 0,
+        timestamp: Date.now(),
+      }
+
+      const mockGetSettings = vi.fn()
+        .mockResolvedValueOnce({ ...DEFAULT_SETTINGS }) // initial load
+        .mockResolvedValueOnce({ ...DEFAULT_SETTINGS, calibration: calibrationData }) // reload
+
+      window.electronAPI = createMockElectronAPI({
+        getSettings: mockGetSettings,
+      })
+
+      const { result } = renderHook(() => useSettings())
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      // Initially no calibration data
+      expect(result.current.settings.calibration).toBeNull()
+
+      // Reload settings
+      await act(async () => {
+        await result.current.reloadSettings()
+      })
+
+      // Now should have calibration data
+      expect(result.current.settings.calibration).toEqual(calibrationData)
+      expect(mockGetSettings).toHaveBeenCalledTimes(2)
+    })
+
+    it('should set error when reloadSettings fails', async () => {
+      const mockGetSettings = vi.fn()
+        .mockResolvedValueOnce({ ...DEFAULT_SETTINGS }) // initial load succeeds
+        .mockRejectedValueOnce(new Error('Reload failed')) // reload fails
+
+      window.electronAPI = createMockElectronAPI({
+        getSettings: mockGetSettings,
+      })
+
+      const { result } = renderHook(() => useSettings())
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      await act(async () => {
+        await result.current.reloadSettings()
+      })
+
+      expect(result.current.error).toBe('Reload failed')
+    })
+
+    it('should be a no-op without electronAPI', async () => {
+      const { result } = renderHook(() => useSettings())
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      const settingsBefore = result.current.settings
+
+      await act(async () => {
+        await result.current.reloadSettings()
+      })
+
+      // Settings should remain unchanged
+      expect(result.current.settings).toEqual(settingsBefore)
+      expect(result.current.error).toBeNull()
+    })
+  })
+
   describe('immutability', () => {
     it('should return new settings object on update', async () => {
       const { result } = renderHook(() => useSettings())
