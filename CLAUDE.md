@@ -130,8 +130,8 @@ PostureStatus { isGood, violations[], confidence, timestamp }
   - [x] Phase 1.3: 姿态分析引擎
   - [x] Phase 1.4: 简单校准
   - [x] Phase 1.5: 模糊和提醒
-  - [ ] Phase 1.6: 设置 UI ← **下一步**
-  - [ ] Phase 1.7: 主检测循环 + 端到端集成
+  - [x] Phase 1.6: 设置 UI
+  - [ ] Phase 1.7: 主检测循环 + 端到端集成 ← **下一步**
 - [ ] **Milestone 2: 自适应智能** — 尚未开始
 - [ ] **Milestone 3: 多屏幕与产品化** — 尚未开始
 
