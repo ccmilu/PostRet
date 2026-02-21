@@ -823,3 +823,206 @@ describe('evaluateAllRules with rule toggles (no mock)', () => {
     expect(violations.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+// ============================================================
+// 4. Sensitivity → Threshold → Rule Evaluation integration
+// ============================================================
+
+describe('Sensitivity scaling affects rule evaluation (no mock)', () => {
+  let evaluateAllRules: typeof import('@/services/posture-analysis/posture-rules').evaluateAllRules
+  let getScaledThresholds: typeof import('@/services/posture-analysis/thresholds').getScaledThresholds
+
+  beforeEach(async () => {
+    const rules = await import('@/services/posture-analysis/posture-rules')
+    evaluateAllRules = rules.evaluateAllRules
+    const thresholds = await import('@/services/posture-analysis/thresholds')
+    getScaledThresholds = thresholds.getScaledThresholds
+  })
+
+  const allRulesOn = {
+    forwardHead: true,
+    slouch: false,
+    headTilt: true,
+    tooClose: true,
+    shoulderAsymmetry: true,
+  }
+
+  it('should NOT trigger HEAD_TILT at low sensitivity for borderline deviation', () => {
+    const deviations = {
+      headForward: 0,
+      torsoSlouch: 0,
+      headTilt: 15, // borderline: above default (12) but below low-sensitivity threshold
+      faceFrameRatio: 0,
+      faceYDelta: 0,
+      noseToEarAvg: 0,
+      shoulderDiff: 0,
+    }
+
+    // Low sensitivity (0.0) → scale=2.0 → headTilt threshold=24
+    const thresholds = getScaledThresholds(0.0)
+    const violations = evaluateAllRules(deviations, thresholds, allRulesOn)
+
+    expect(violations.some((v) => v.rule === 'HEAD_TILT')).toBe(false)
+  })
+
+  it('should trigger HEAD_TILT at high sensitivity for the same borderline deviation', () => {
+    const deviations = {
+      headForward: 0,
+      torsoSlouch: 0,
+      headTilt: 15, // same deviation as above
+      faceFrameRatio: 0,
+      faceYDelta: 0,
+      noseToEarAvg: 0,
+      shoulderDiff: 0,
+    }
+
+    // High sensitivity (1.0) → scale=0.5 → headTilt threshold=6
+    const thresholds = getScaledThresholds(1.0)
+    const violations = evaluateAllRules(deviations, thresholds, allRulesOn)
+
+    expect(violations.some((v) => v.rule === 'HEAD_TILT')).toBe(true)
+  })
+
+  it('should produce higher severity at max sensitivity than at mid sensitivity', () => {
+    const deviations = {
+      headForward: 0,
+      torsoSlouch: 0,
+      headTilt: 20,
+      faceFrameRatio: 0,
+      faceYDelta: 0,
+      noseToEarAvg: 0,
+      shoulderDiff: 0,
+    }
+
+    const midThresholds = getScaledThresholds(0.5)
+    const maxThresholds = getScaledThresholds(1.0)
+
+    const midViolations = evaluateAllRules(deviations, midThresholds, allRulesOn)
+    const maxViolations = evaluateAllRules(deviations, maxThresholds, allRulesOn)
+
+    const midSeverity = midViolations.find((v) => v.rule === 'HEAD_TILT')?.severity ?? 0
+    const maxSeverity = maxViolations.find((v) => v.rule === 'HEAD_TILT')?.severity ?? 0
+
+    expect(maxSeverity).toBeGreaterThan(midSeverity)
+  })
+
+  it('should produce no false positives at min sensitivity with zero deviations', () => {
+    const deviations = {
+      headForward: 0,
+      torsoSlouch: 0,
+      headTilt: 0,
+      faceFrameRatio: 0,
+      faceYDelta: 0,
+      noseToEarAvg: 0,
+      shoulderDiff: 0,
+    }
+
+    const thresholds = getScaledThresholds(0.0)
+    const violations = evaluateAllRules(deviations, thresholds, allRulesOn)
+
+    expect(violations).toHaveLength(0)
+  })
+})
+
+// ============================================================
+// 5. useDebugMode lifecycle integration
+// ============================================================
+
+describe('useDebugMode lifecycle integration', () => {
+  let renderHook: typeof import('@testing-library/react').renderHook
+  let act: typeof import('@testing-library/react').act
+  let useDebugMode: typeof import('@/hooks/useDebugMode').useDebugMode
+
+  beforeEach(async () => {
+    vi.useFakeTimers()
+    const rtl = await import('@testing-library/react')
+    renderHook = rtl.renderHook
+    act = rtl.act
+    const mod = await import('@/hooks/useDebugMode')
+    useDebugMode = mod.useDebugMode
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('should persist debug mode via onToggle callback after 5-click activation', () => {
+    const onToggle = vi.fn()
+
+    const { result } = renderHook(() => useDebugMode(false, onToggle))
+
+    // 5 rapid clicks
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        result.current.handleVersionClick()
+      }
+    })
+
+    expect(result.current.debugMode).toBe(true)
+    expect(onToggle).toHaveBeenCalledWith(true)
+  })
+
+  it('should reset click counter after timeout and require full 5 clicks again', () => {
+    const onToggle = vi.fn()
+
+    const { result } = renderHook(() => useDebugMode(false, onToggle))
+
+    // Click 4 times (not enough)
+    act(() => {
+      for (let i = 0; i < 4; i++) {
+        result.current.handleVersionClick()
+      }
+    })
+
+    expect(result.current.clickCount).toBe(4)
+
+    // Wait for timeout
+    act(() => {
+      vi.advanceTimersByTime(2100)
+    })
+
+    expect(result.current.clickCount).toBe(0)
+
+    // Click 4 more times — still not enough since counter reset
+    act(() => {
+      for (let i = 0; i < 4; i++) {
+        result.current.handleVersionClick()
+      }
+    })
+
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(result.current.debugMode).toBe(false)
+  })
+
+  it('should toggle OFF debug mode with another 5 clicks when already on', () => {
+    const onToggle = vi.fn()
+
+    const { result } = renderHook(() => useDebugMode(true, onToggle))
+
+    // 5 clicks to toggle off
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        result.current.handleVersionClick()
+      }
+    })
+
+    expect(result.current.debugMode).toBe(false)
+    expect(onToggle).toHaveBeenCalledWith(false)
+  })
+
+  it('should sync debug mode state when external settings change', () => {
+    const onToggle = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ initial }: { initial: boolean }) => useDebugMode(initial, onToggle),
+      { initialProps: { initial: false } },
+    )
+
+    expect(result.current.debugMode).toBe(false)
+
+    // Simulate settings loaded with debugMode=true
+    rerender({ initial: true })
+
+    expect(result.current.debugMode).toBe(true)
+  })
+})
