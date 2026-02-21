@@ -16,7 +16,11 @@
       "Bash(mkdir *)",
       "Bash(brew *)",
       "Bash(which *)",
-      "Bash(ffmpeg *)"
+      "Bash(ffmpeg *)",
+      "Bash(lsof *)",
+      "Bash(rm -rf test/screenshots/*)",
+      "Bash(cat *)",
+      "Bash(agent-browser *)"
     ],
     "deny": [
       "Read(./.env)",

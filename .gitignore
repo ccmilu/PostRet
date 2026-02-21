@@ -78,3 +78,5 @@ test/fixtures/videos/*.mov
 test/fixtures/videos/*.webm
 test/fixtures/photos/
 test/manual/*.png
+test/screenshots/
+test/fixtures/screenshots/
