@@ -346,3 +346,85 @@
   background: #007aff;
   color: #ffffff;
 }
+
+/* --- Error Status --- */
+
+.status-error {
+  background: rgba(255, 59, 48, 0.12);
+  color: #d70015;
+}
+
+.detection-error-text {
+  font-size: 12px;
+  color: #d70015;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
+/* --- Detection Debug Panel --- */
+
+.detection-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #86868b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.debug-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.debug-label {
+  font-size: 12px;
+  color: #6e6e73;
+}
+
+.debug-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1d1d1f;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-good {
+  color: #248a3d;
+}
+
+.debug-bad {
+  color: #d70015;
+}
+
+.debug-violations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-violation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.debug-violation-item {
+  font-size: 12px;
+  color: #d70015;
+  padding: 1px 0;
+}
