@@ -16,11 +16,13 @@ import { ConfirmStep } from '@/components/calibration/ConfirmStep'
 
 const mockGoToStep2 = vi.fn()
 const mockGoToStep3 = vi.fn()
+const mockStartAngleCollect = vi.fn()
 const mockGoBackToStep1 = vi.fn()
 const mockRecalibrate = vi.fn()
 const mockConfirm = vi.fn()
 
-let mockStep: WizardStep = 1
+let mockStep: WizardStep = 'welcome'
+let mockStepNumber = 1
 let mockProgress = 0
 let mockError: string | null = null
 let mockPositionResult: PositionCheckResult = {
@@ -28,21 +30,28 @@ let mockPositionResult: PositionCheckResult = {
   message: '未检测到人脸，请确保脸部在摄像头画面中',
 }
 let mockCanContinue = false
+let mockAngleIndex = 0
+let mockCurrentAngleLabel = 90
 
 vi.mock('@/hooks/useCalibrationWizard', () => ({
   useCalibrationWizard: () => ({
     step: mockStep,
+    stepNumber: mockStepNumber,
     progress: mockProgress,
     error: mockError,
     positionResult: mockPositionResult,
     canContinue: mockCanContinue,
     landmarks: undefined,
+    angleIndex: mockAngleIndex,
+    currentAngleLabel: mockCurrentAngleLabel,
     goToStep2: mockGoToStep2,
     goToStep3: mockGoToStep3,
+    startAngleCollect: mockStartAngleCollect,
     goBackToStep1: mockGoBackToStep1,
     recalibrate: mockRecalibrate,
     confirm: mockConfirm,
   }),
+  TOTAL_ANGLES: 3,
 }))
 
 const mockGetUserMedia = vi.fn()
@@ -50,7 +59,8 @@ const mockPlay = vi.fn().mockResolvedValue(undefined)
 
 beforeEach(() => {
   vi.useFakeTimers()
-  mockStep = 1
+  mockStep = 'welcome'
+  mockStepNumber = 1
   mockProgress = 0
   mockError = null
   mockPositionResult = {
@@ -58,9 +68,12 @@ beforeEach(() => {
     message: '未检测到人脸，请确保脸部在摄像头画面中',
   }
   mockCanContinue = false
+  mockAngleIndex = 0
+  mockCurrentAngleLabel = 90
 
   mockGoToStep2.mockClear()
   mockGoToStep3.mockClear()
+  mockStartAngleCollect.mockClear()
   mockGoBackToStep1.mockClear()
   mockRecalibrate.mockClear()
   mockConfirm.mockClear()
@@ -146,8 +159,9 @@ describe('CalibrationPage - wizard error handling', () => {
 // ─── Step indicator states ───
 
 describe('CalibrationPage - step indicator', () => {
-  it('marks step 1 as active when on step 1', async () => {
-    mockStep = 1
+  it('marks step 1 as active when on welcome', async () => {
+    mockStep = 'welcome'
+    mockStepNumber = 1
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -162,7 +176,8 @@ describe('CalibrationPage - step indicator', () => {
   })
 
   it('marks previous steps as completed and current as active', async () => {
-    mockStep = 3
+    mockStep = 'collect'
+    mockStepNumber = 3
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -177,8 +192,9 @@ describe('CalibrationPage - step indicator', () => {
     expect(dots[3]).not.toHaveClass('completed')
   })
 
-  it('marks all previous steps as completed on step 4', async () => {
-    mockStep = 4
+  it('marks all previous steps as completed on confirm step', async () => {
+    mockStep = 'confirm'
+    mockStepNumber = 4
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -197,7 +213,7 @@ describe('CalibrationPage - step indicator', () => {
 
 describe('CalibrationPage - video visibility', () => {
   it('video element is always in the DOM (stable ref for stream binding)', async () => {
-    mockStep = 1
+    mockStep = 'welcome'
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -207,8 +223,8 @@ describe('CalibrationPage - video visibility', () => {
     expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
   })
 
-  it('hides video container on step 1', async () => {
-    mockStep = 1
+  it('hides video container on welcome step', async () => {
+    mockStep = 'welcome'
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -218,8 +234,9 @@ describe('CalibrationPage - video visibility', () => {
     expect(container).toHaveClass('calibration-preview-hidden')
   })
 
-  it('shows video container on step 2', async () => {
-    mockStep = 2
+  it('shows video container on position-check step', async () => {
+    mockStep = 'position-check'
+    mockStepNumber = 2
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -229,8 +246,9 @@ describe('CalibrationPage - video visibility', () => {
     expect(container).not.toHaveClass('calibration-preview-hidden')
   })
 
-  it('shows video container on step 3', async () => {
-    mockStep = 3
+  it('shows video container on collect step', async () => {
+    mockStep = 'collect'
+    mockStepNumber = 3
     mockProgress = 0.3
 
     await act(async () => {
@@ -241,8 +259,9 @@ describe('CalibrationPage - video visibility', () => {
     expect(container).not.toHaveClass('calibration-preview-hidden')
   })
 
-  it('hides video container on step 4', async () => {
-    mockStep = 4
+  it('hides video container on confirm step', async () => {
+    mockStep = 'confirm'
+    mockStepNumber = 4
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -257,7 +276,8 @@ describe('CalibrationPage - video visibility', () => {
 
 describe('CalibrationPage - position status messages', () => {
   beforeEach(() => {
-    mockStep = 2
+    mockStep = 'position-check'
+    mockStepNumber = 2
   })
 
   it('shows no_face message', async () => {
@@ -339,7 +359,8 @@ describe('CalibrationPage - position status messages', () => {
 
 describe('CalibrationPage - confirm without onComplete', () => {
   it('does not throw when confirm is clicked without onComplete prop', async () => {
-    mockStep = 4
+    mockStep = 'confirm'
+    mockStepNumber = 4
 
     await act(async () => {
       render(<CalibrationPage />)
@@ -357,7 +378,10 @@ describe('CalibrationPage - confirm without onComplete', () => {
 
 describe('CalibrationPage - progress display values', () => {
   beforeEach(() => {
-    mockStep = 3
+    mockStep = 'collect'
+    mockStepNumber = 3
+    mockAngleIndex = 0
+    mockCurrentAngleLabel = 90
   })
 
   it('shows 25% for progress 0.25', async () => {
@@ -408,7 +432,7 @@ describe('WelcomeStep', () => {
     render(<WelcomeStep onStart={vi.fn()} />)
     expect(screen.getByText(/坐正身体/)).toBeInTheDocument()
     expect(screen.getByText(/确保面部正对摄像头/)).toBeInTheDocument()
-    expect(screen.getByText(/采集过程约 5 秒/)).toBeInTheDocument()
+    expect(screen.getByText(/按提示调整屏幕开合角度/)).toBeInTheDocument()
   })
 
   it('renders start button with text "开始校准"', () => {
@@ -530,59 +554,59 @@ describe('PositionCheckStep', () => {
 
 describe('CollectStep', () => {
   it('renders step title "正在采集"', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('正在采集')).toBeInTheDocument()
   })
 
   it('renders description "请保持姿势不动"', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('请保持姿势不动')).toBeInTheDocument()
   })
 
   it('shows 0% at progress 0', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
   it('shows 50% at progress 0.5', () => {
-    render(<CollectStep progress={0.5} />)
+    render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('50%')).toBeInTheDocument()
   })
 
   it('shows 100% at progress 1', () => {
-    render(<CollectStep progress={1} />)
+    render(<CollectStep progress={1} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 
-  it('rounds progress correctly: 0.333 → 33%', () => {
-    render(<CollectStep progress={0.333} />)
+  it('rounds progress correctly: 0.333 -> 33%', () => {
+    render(<CollectStep progress={0.333} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('33%')).toBeInTheDocument()
   })
 
-  it('rounds progress correctly: 0.666 → 67%', () => {
-    render(<CollectStep progress={0.666} />)
+  it('rounds progress correctly: 0.666 -> 67%', () => {
+    render(<CollectStep progress={0.666} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('67%')).toBeInTheDocument()
   })
 
-  it('rounds progress correctly: 0.999 → 100%', () => {
-    render(<CollectStep progress={0.999} />)
+  it('rounds progress correctly: 0.999 -> 100%', () => {
+    render(<CollectStep progress={0.999} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 
   it('renders progress ring with SVG', () => {
-    render(<CollectStep progress={0.5} />)
+    render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     expect(screen.getByTestId('calibration-progress-ring')).toBeInTheDocument()
     const svg = screen.getByTestId('calibration-progress-ring').querySelector('svg')
     expect(svg).not.toBeNull()
   })
 
   it('renders with correct data-testid', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByTestId('wizard-step-3')).toBeInTheDocument()
   })
 
   it('renders progress ring with proper strokeDashoffset at 0%', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     const circles = screen.getByTestId('calibration-progress-ring').querySelectorAll('circle')
     // Second circle is the progress circle
     const progressCircle = circles[1]
@@ -596,7 +620,7 @@ describe('CollectStep', () => {
   })
 
   it('renders progress ring with strokeDashoffset 0 at 100%', () => {
-    render(<CollectStep progress={1} />)
+    render(<CollectStep progress={1} angleIndex={0} angleLabel={90} />)
     const circles = screen.getByTestId('calibration-progress-ring').querySelectorAll('circle')
     const progressCircle = circles[1]
     expect(progressCircle).toHaveAttribute('stroke-dashoffset', '0')

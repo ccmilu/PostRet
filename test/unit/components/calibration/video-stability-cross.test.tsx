@@ -24,7 +24,8 @@ import type { PositionCheckResult } from '@/components/calibration/position-chec
 
 // --- Controlled mock for useCalibrationWizard ---
 
-let mockStep: WizardStep = 1
+let mockStep: WizardStep = 'welcome'
+let mockStepNumber = 1
 let mockProgress = 0
 let mockError: string | null = null
 let mockPositionResult: PositionCheckResult = {
@@ -36,17 +37,22 @@ let mockCanContinue = false
 vi.mock('@/hooks/useCalibrationWizard', () => ({
   useCalibrationWizard: () => ({
     step: mockStep,
+    stepNumber: mockStepNumber,
     progress: mockProgress,
     error: mockError,
     positionResult: mockPositionResult,
     canContinue: mockCanContinue,
     landmarks: undefined,
+    angleIndex: 0,
+    currentAngleLabel: 90,
     goToStep2: vi.fn(),
     goToStep3: vi.fn(),
+    startAngleCollect: vi.fn(),
     goBackToStep1: vi.fn(),
     recalibrate: vi.fn(),
     confirm: vi.fn(),
   }),
+  TOTAL_ANGLES: 3,
 }))
 
 import { CalibrationPage } from '@/components/calibration/CalibrationPage'
@@ -77,7 +83,8 @@ function createMockStream(): MediaStream {
 beforeEach(() => {
   vi.useFakeTimers()
 
-  mockStep = 1
+  mockStep = 'welcome'
+  mockStepNumber = 1
   mockProgress = 0
   mockError = null
   mockPositionResult = {
@@ -105,6 +112,18 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// Helper to set step with proper stepNumber
+function setMockStep(step: WizardStep) {
+  mockStep = step
+  switch (step) {
+    case 'welcome': mockStepNumber = 1; break
+    case 'position-check': mockStepNumber = 2; break
+    case 'angle-instruction':
+    case 'collect': mockStepNumber = 3; break
+    case 'confirm': mockStepNumber = 4; break
+  }
+}
+
 // ============================================
 // NON-MOCK TESTS: DOM identity & stream binding
 // ============================================
@@ -112,8 +131,9 @@ afterEach(() => {
 describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
   describe('video DOM identity across step transitions', () => {
     it('only ONE video element exists in the DOM at any step', async () => {
-      for (const step of [1, 2, 3, 4] as WizardStep[]) {
-        mockStep = step
+      const steps: WizardStep[] = ['welcome', 'position-check', 'collect', 'confirm']
+      for (const step of steps) {
+        setMockStep(step)
 
         const { container, unmount } = render(<CalibrationPage />)
         await act(async () => {
@@ -127,8 +147,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       }
     })
 
-    it('video element is in DOM on step 1 (hidden but mounted)', async () => {
-      mockStep = 1
+    it('video element is in DOM on welcome step (hidden but mounted)', async () => {
+      setMockStep('welcome')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -139,8 +159,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(video.tagName).toBe('VIDEO')
     })
 
-    it('video element is in DOM on step 4 (hidden but mounted)', async () => {
-      mockStep = 4
+    it('video element is in DOM on confirm step (hidden but mounted)', async () => {
+      setMockStep('confirm')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -152,7 +172,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
     })
 
     it('video element is the SAME DOM node when step changes (rerender)', async () => {
-      mockStep = 1
+      setMockStep('welcome')
 
       const { rerender } = render(<CalibrationPage />)
       await act(async () => {
@@ -161,8 +181,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
       const videoStep1 = screen.getByTestId('calibration-video')
 
-      // Transition to step 2
-      mockStep = 2
+      // Transition to position-check
+      setMockStep('position-check')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -170,8 +190,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
       const videoStep2 = screen.getByTestId('calibration-video')
 
-      // Transition to step 3
-      mockStep = 3
+      // Transition to collect
+      setMockStep('collect')
       mockProgress = 0.5
       rerender(<CalibrationPage />)
       await act(async () => {
@@ -180,8 +200,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
       const videoStep3 = screen.getByTestId('calibration-video')
 
-      // Transition to step 4
-      mockStep = 4
+      // Transition to confirm
+      setMockStep('confirm')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -196,8 +216,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(videoStep3).toBe(videoStep4)
     })
 
-    it('video element is the SAME DOM node when going back (step 2 → 1 → 2)', async () => {
-      mockStep = 2
+    it('video element is the SAME DOM node when going back (position-check -> welcome -> position-check)', async () => {
+      setMockStep('position-check')
 
       const { rerender } = render(<CalibrationPage />)
       await act(async () => {
@@ -206,8 +226,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
       const videoFirst = screen.getByTestId('calibration-video')
 
-      // Go back to step 1
-      mockStep = 1
+      // Go back to welcome
+      setMockStep('welcome')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -215,8 +235,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
       const videoBack = screen.getByTestId('calibration-video')
 
-      // Return to step 2
-      mockStep = 2
+      // Return to position-check
+      setMockStep('position-check')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -231,7 +251,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
 
   describe('stream binding persistence', () => {
     it('video.srcObject is set after camera acquisition', async () => {
-      mockStep = 1
+      setMockStep('welcome')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -249,7 +269,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
     })
 
     it('video.srcObject remains the same stream after step transition', async () => {
-      mockStep = 1
+      setMockStep('welcome')
 
       const { rerender } = render(<CalibrationPage />)
       await act(async () => {
@@ -259,8 +279,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       const video = screen.getByTestId('calibration-video') as HTMLVideoElement
       const streamBefore = video.srcObject
 
-      // Transition step 1 → 2
-      mockStep = 2
+      // Transition welcome -> position-check
+      setMockStep('position-check')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -270,8 +290,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(video.srcObject).toBe(streamBefore)
     })
 
-    it('video.srcObject remains the same stream through step 2 → 3 → 4', async () => {
-      mockStep = 2
+    it('video.srcObject remains the same stream through position-check -> collect -> confirm', async () => {
+      setMockStep('position-check')
 
       const { rerender } = render(<CalibrationPage />)
       await act(async () => {
@@ -281,8 +301,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       const video = screen.getByTestId('calibration-video') as HTMLVideoElement
       const streamBefore = video.srcObject
 
-      // Step 3
-      mockStep = 3
+      // collect step
+      setMockStep('collect')
       mockProgress = 0.5
       rerender(<CalibrationPage />)
       await act(async () => {
@@ -290,8 +310,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       })
       expect(video.srcObject).toBe(streamBefore)
 
-      // Step 4
-      mockStep = 4
+      // confirm step
+      setMockStep('confirm')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -301,8 +321,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
   })
 
   describe('visibility CSS class toggling', () => {
-    it('container has calibration-preview-hidden class on step 1', async () => {
-      mockStep = 1
+    it('container has calibration-preview-hidden class on welcome step', async () => {
+      setMockStep('welcome')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -313,8 +333,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(container).toHaveClass('calibration-preview-hidden')
     })
 
-    it('container does NOT have calibration-preview-hidden class on step 2', async () => {
-      mockStep = 2
+    it('container does NOT have calibration-preview-hidden class on position-check step', async () => {
+      setMockStep('position-check')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -325,8 +345,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(container).not.toHaveClass('calibration-preview-hidden')
     })
 
-    it('container does NOT have calibration-preview-hidden class on step 3', async () => {
-      mockStep = 3
+    it('container does NOT have calibration-preview-hidden class on collect step', async () => {
+      setMockStep('collect')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -337,8 +357,8 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(container).not.toHaveClass('calibration-preview-hidden')
     })
 
-    it('container has calibration-preview-hidden class on step 4', async () => {
-      mockStep = 4
+    it('container has calibration-preview-hidden class on confirm step', async () => {
+      setMockStep('confirm')
 
       await act(async () => {
         render(<CalibrationPage />)
@@ -350,7 +370,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
     })
 
     it('toggling between hidden and visible preserves video element identity', async () => {
-      mockStep = 1
+      setMockStep('welcome')
 
       const { rerender } = render(<CalibrationPage />)
       await act(async () => {
@@ -362,7 +382,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       expect(containerHidden).toHaveClass('calibration-preview-hidden')
 
       // Show
-      mockStep = 2
+      setMockStep('position-check')
       rerender(<CalibrationPage />)
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -382,7 +402,7 @@ describe('CalibrationPage video element stability (non-mock DOM tests)', () => {
       ;(navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('Camera not found'),
       )
-      mockStep = 2
+      setMockStep('position-check')
 
       await act(async () => {
         render(<CalibrationPage />)

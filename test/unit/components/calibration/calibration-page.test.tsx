@@ -6,11 +6,13 @@ import type { PositionCheckResult } from '@/components/calibration/position-chec
 // Mock useCalibrationWizard hook
 const mockGoToStep2 = vi.fn()
 const mockGoToStep3 = vi.fn()
+const mockStartAngleCollect = vi.fn()
 const mockGoBackToStep1 = vi.fn()
 const mockRecalibrate = vi.fn()
 const mockConfirm = vi.fn()
 
-let mockStep: WizardStep = 1
+let mockStep: WizardStep = 'welcome'
+let mockStepNumber = 1
 let mockProgress = 0
 let mockError: string | null = null
 let mockPositionResult: PositionCheckResult = {
@@ -18,21 +20,28 @@ let mockPositionResult: PositionCheckResult = {
   message: '未检测到人脸，请确保脸部在摄像头画面中',
 }
 let mockCanContinue = false
+let mockAngleIndex = 0
+let mockCurrentAngleLabel = 90
 
 vi.mock('@/hooks/useCalibrationWizard', () => ({
   useCalibrationWizard: () => ({
     step: mockStep,
+    stepNumber: mockStepNumber,
     progress: mockProgress,
     error: mockError,
     positionResult: mockPositionResult,
     canContinue: mockCanContinue,
     landmarks: undefined,
+    angleIndex: mockAngleIndex,
+    currentAngleLabel: mockCurrentAngleLabel,
     goToStep2: mockGoToStep2,
     goToStep3: mockGoToStep3,
+    startAngleCollect: mockStartAngleCollect,
     goBackToStep1: mockGoBackToStep1,
     recalibrate: mockRecalibrate,
     confirm: mockConfirm,
   }),
+  TOTAL_ANGLES: 3,
 }))
 
 // Mock navigator.mediaDevices
@@ -41,7 +50,8 @@ const mockPlay = vi.fn().mockResolvedValue(undefined)
 
 beforeEach(() => {
   vi.useFakeTimers()
-  mockStep = 1
+  mockStep = 'welcome'
+  mockStepNumber = 1
   mockProgress = 0
   mockError = null
   mockPositionResult = {
@@ -49,8 +59,11 @@ beforeEach(() => {
     message: '未检测到人脸，请确保脸部在摄像头画面中',
   }
   mockCanContinue = false
+  mockAngleIndex = 0
+  mockCurrentAngleLabel = 90
   mockGoToStep2.mockClear()
   mockGoToStep3.mockClear()
+  mockStartAngleCollect.mockClear()
   mockGoBackToStep1.mockClear()
   mockRecalibrate.mockClear()
   mockConfirm.mockClear()
@@ -122,7 +135,8 @@ describe('CalibrationPage (Wizard)', () => {
 
   describe('step 2 - position check', () => {
     beforeEach(() => {
-      mockStep = 2
+      mockStep = 'position-check'
+      mockStepNumber = 2
     })
 
     it('shows position check step', async () => {
@@ -199,8 +213,11 @@ describe('CalibrationPage (Wizard)', () => {
 
   describe('step 3 - collect', () => {
     beforeEach(() => {
-      mockStep = 3
+      mockStep = 'collect'
+      mockStepNumber = 3
       mockProgress = 0.5
+      mockAngleIndex = 0
+      mockCurrentAngleLabel = 90
     })
 
     it('shows collect step with progress ring', async () => {
@@ -244,7 +261,8 @@ describe('CalibrationPage (Wizard)', () => {
 
   describe('step 4 - confirm', () => {
     beforeEach(() => {
-      mockStep = 4
+      mockStep = 'confirm'
+      mockStepNumber = 4
       mockProgress = 1
     })
 

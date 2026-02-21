@@ -5,6 +5,10 @@ import { CollectStep } from '@/components/calibration/CollectStep'
 import { ConfirmStep } from '@/components/calibration/ConfirmStep'
 import type { PositionCheckResult } from '@/components/calibration/position-check'
 
+vi.mock('@/hooks/useCalibrationWizard', () => ({
+  TOTAL_ANGLES: 3,
+}))
+
 describe('WelcomeStep', () => {
   it('renders with correct test id', () => {
     render(<WelcomeStep onStart={vi.fn()} />)
@@ -25,7 +29,7 @@ describe('WelcomeStep', () => {
     render(<WelcomeStep onStart={vi.fn()} />)
     expect(screen.getByText(/坐正身体/)).toBeInTheDocument()
     expect(screen.getByText(/确保面部正对/)).toBeInTheDocument()
-    expect(screen.getByText(/采集过程约 5 秒/)).toBeInTheDocument()
+    expect(screen.getByText(/按提示调整屏幕开合角度/)).toBeInTheDocument()
   })
 
   it('shows start button with correct test id', () => {
@@ -135,42 +139,42 @@ describe('PositionCheckStep', () => {
 
 describe('CollectStep', () => {
   it('renders with correct test id', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByTestId('wizard-step-3')).toBeInTheDocument()
   })
 
   it('displays collecting title', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('正在采集')).toBeInTheDocument()
   })
 
   it('displays progress ring', () => {
-    render(<CollectStep progress={0.5} />)
+    render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     expect(screen.getByTestId('calibration-progress-ring')).toBeInTheDocument()
   })
 
   it('shows 0% at start', () => {
-    render(<CollectStep progress={0} />)
+    render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
   it('shows 50% for half progress', () => {
-    render(<CollectStep progress={0.5} />)
+    render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('50%')).toBeInTheDocument()
   })
 
   it('shows 100% when complete', () => {
-    render(<CollectStep progress={1} />)
+    render(<CollectStep progress={1} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 
   it('rounds progress percentage', () => {
-    render(<CollectStep progress={0.333} />)
+    render(<CollectStep progress={0.333} angleIndex={0} angleLabel={90} />)
     expect(screen.getByText('33%')).toBeInTheDocument()
   })
 
   it('contains SVG progress circle', () => {
-    const { container } = render(<CollectStep progress={0.5} />)
+    const { container } = render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     const circles = container.querySelectorAll('circle')
     expect(circles.length).toBe(2) // background + progress
   })

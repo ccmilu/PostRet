@@ -26,11 +26,14 @@ const mockAddSample = vi.fn()
 const mockComputeBaseline = vi.fn()
 
 vi.mock('@/services/calibration/calibration-service', () => ({
-  CalibrationService: vi.fn().mockImplementation(() => ({
-    addSample: mockAddSample,
-    computeBaseline: mockComputeBaseline,
-    reset: vi.fn(),
-  })),
+  CalibrationService: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.addSample = mockAddSample
+    this.computeBaseline = mockComputeBaseline
+    this.reset = vi.fn()
+    this.startAngleCollection = vi.fn()
+    this.completeCurrentAngle = vi.fn()
+    this.computeMultiAngleBaseline = vi.fn().mockReturnValue({ baseline: {} })
+  }),
 }))
 
 vi.mock('@/services/posture-analysis/angle-calculator', () => ({
@@ -40,6 +43,14 @@ vi.mock('@/services/posture-analysis/angle-calculator', () => ({
     headTiltAngle: 0,
     faceFrameRatio: 0.15,
     shoulderDiff: 0,
+  }),
+}))
+
+vi.mock('@/services/calibration/screen-angle-estimator', () => ({
+  extractScreenAngleSignals: vi.fn().mockReturnValue({
+    faceY: 0.5,
+    noseChinRatio: 0.3,
+    eyeMouthRatio: 0.2,
   }),
 }))
 
@@ -84,7 +95,7 @@ describe('useCalibrationWizard - cross-test', () => {
         result.current.goBackToStep1()
       })
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
       expect(result.current.canContinue).toBe(false)
     })
 
@@ -135,30 +146,40 @@ describe('useCalibrationWizard - cross-test', () => {
   })
 
   describe('recalibrate state reset', () => {
-    it('resets all state when called from step 4', async () => {
+    it('resets all state when called from confirm step', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
-      // Navigate to step 3 (mock collection)
+      // Navigate to angle-instruction then start collecting
       await act(async () => {
         result.current.goToStep2()
       })
       await act(async () => {
         result.current.goToStep3()
       })
-
-      // Complete mock collection
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500)
+        result.current.startAngleCollect()
       })
-      expect(result.current.step).toBe(4)
+
+      // Complete all 3 angles of mock collection
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2500)
+        })
+        if (i < 2) {
+          await act(async () => {
+            result.current.startAngleCollect()
+          })
+        }
+      }
+      expect(result.current.step).toBe('confirm')
 
       // Recalibrate
       await act(async () => {
         result.current.recalibrate()
       })
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
       expect(result.current.progress).toBe(0)
       expect(result.current.error).toBeNull()
       expect(result.current.canContinue).toBe(false)
@@ -166,7 +187,7 @@ describe('useCalibrationWizard - cross-test', () => {
       expect(result.current.landmarks).toBeUndefined()
     })
 
-    it('resets progress to 0 when called from step 2', async () => {
+    it('resets progress to 0 when called from position-check', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -178,7 +199,7 @@ describe('useCalibrationWizard - cross-test', () => {
         result.current.recalibrate()
       })
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
       expect(result.current.progress).toBe(0)
     })
   })
@@ -239,8 +260,8 @@ describe('useCalibrationWizard - cross-test', () => {
     })
   })
 
-  describe('step 3 mock collection progress', () => {
-    it('progress starts at 0', async () => {
+  describe('mock collection progress (multi-angle)', () => {
+    it('progress starts at 0 after startAngleCollect', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -250,12 +271,15 @@ describe('useCalibrationWizard - cross-test', () => {
       await act(async () => {
         result.current.goToStep3()
       })
+      await act(async () => {
+        result.current.startAngleCollect()
+      })
 
-      // Immediately after starting step 3
+      // Immediately after starting collection
       expect(result.current.progress).toBe(0)
     })
 
-    it('progress reaches 1.0 when mock collection completes', async () => {
+    it('transitions to confirm after all angles complete', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -266,16 +290,22 @@ describe('useCalibrationWizard - cross-test', () => {
         result.current.goToStep3()
       })
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500)
-      })
+      // Complete all 3 angles
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          result.current.startAngleCollect()
+        })
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2500)
+        })
+      }
 
-      expect(result.current.step).toBe(4)
+      expect(result.current.step).toBe('confirm')
     })
   })
 
   describe('rapid step transitions (cancellation)', () => {
-    it('going back to step 1 from step 2 stops position checking', async () => {
+    it('going back to welcome from position-check stops position checking', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -298,7 +328,7 @@ describe('useCalibrationWizard - cross-test', () => {
       expect(mockDetect.mock.calls.length).toBe(callsBefore)
     })
 
-    it('recalibrate from step 3 stops collection timer', async () => {
+    it('recalibrate from collect step stops collection timer', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -308,22 +338,25 @@ describe('useCalibrationWizard - cross-test', () => {
       await act(async () => {
         result.current.goToStep3()
       })
+      await act(async () => {
+        result.current.startAngleCollect()
+      })
 
-      expect(result.current.step).toBe(3)
+      expect(result.current.step).toBe('collect')
 
       await act(async () => {
         result.current.recalibrate()
       })
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
       expect(result.current.progress).toBe(0)
 
-      // Advance time - should not auto-advance to step 4
+      // Advance time - should not auto-advance to confirm
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(10000)
       })
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
     })
   })
 
@@ -333,13 +366,17 @@ describe('useCalibrationWizard - cross-test', () => {
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
       expect(result.current).toHaveProperty('step')
+      expect(result.current).toHaveProperty('stepNumber')
       expect(result.current).toHaveProperty('progress')
       expect(result.current).toHaveProperty('error')
       expect(result.current).toHaveProperty('positionResult')
       expect(result.current).toHaveProperty('canContinue')
       expect(result.current).toHaveProperty('landmarks')
+      expect(result.current).toHaveProperty('angleIndex')
+      expect(result.current).toHaveProperty('currentAngleLabel')
       expect(result.current).toHaveProperty('goToStep2')
       expect(result.current).toHaveProperty('goToStep3')
+      expect(result.current).toHaveProperty('startAngleCollect')
       expect(result.current).toHaveProperty('goBackToStep1')
       expect(result.current).toHaveProperty('recalibrate')
       expect(result.current).toHaveProperty('confirm')
@@ -351,6 +388,7 @@ describe('useCalibrationWizard - cross-test', () => {
 
       expect(typeof result.current.goToStep2).toBe('function')
       expect(typeof result.current.goToStep3).toBe('function')
+      expect(typeof result.current.startAngleCollect).toBe('function')
       expect(typeof result.current.goBackToStep1).toBe('function')
       expect(typeof result.current.recalibrate).toBe('function')
       expect(typeof result.current.confirm).toBe('function')
@@ -376,10 +414,22 @@ describe('useCalibrationWizard - cross-test', () => {
         result.current.goToStep3()
       })
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500)
+        result.current.startAngleCollect()
       })
 
-      expect(result.current.step).toBe(4)
+      // Complete all 3 angles
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2500)
+        })
+        if (i < 2) {
+          await act(async () => {
+            result.current.startAngleCollect()
+          })
+        }
+      }
+
+      expect(result.current.step).toBe('confirm')
 
       await act(async () => {
         result.current.confirm()

@@ -6,7 +6,7 @@
  * two different <video> elements for different steps. When switching from step 1
  * to step 2, the old video unmounted and a new one mounted, but the stream was
  * still bound to the old element's srcObject. The new video had no stream, so
- * PoseDetector.detect() saw readyState=0 and returned null → "未检测到人脸".
+ * PoseDetector.detect() saw readyState=0 and returned null -> "未检测到人脸".
  *
  * WHY PREVIOUS TESTS DIDN'T CATCH IT:
  * - Unit tests only checked video visibility per step (toBeInTheDocument / not),
@@ -21,7 +21,7 @@
  *   but does NOT mock the CalibrationPage's own rendering logic or video elements.
  * - Simulates step transitions via rerender and verifies:
  *   1. The video DOM element is the SAME instance across all steps (ref identity).
- *   2. The stream bound via srcObject survives step 1→2→3→4 transitions.
+ *   2. The stream bound via srcObject survives step 1->2->3->4 transitions.
  * - Would have FAILED with the old two-video conditional rendering approach.
  */
 import { render, screen, act } from '@testing-library/react'
@@ -29,13 +29,15 @@ import type { WizardStep } from '@/hooks/useCalibrationWizard'
 import type { PositionCheckResult } from '@/components/calibration/position-check'
 import { CalibrationPage } from '@/components/calibration/CalibrationPage'
 
-// ─── Mock useCalibrationWizard (step control only) ───
+// --- Mock useCalibrationWizard (step control only) ---
 
-let mockStep: WizardStep = 1
+let mockStep: WizardStep = 'welcome'
+let mockStepNumber = 1
 
 vi.mock('@/hooks/useCalibrationWizard', () => ({
   useCalibrationWizard: () => ({
     step: mockStep,
+    stepNumber: mockStepNumber,
     progress: 0,
     error: null,
     positionResult: {
@@ -44,15 +46,19 @@ vi.mock('@/hooks/useCalibrationWizard', () => ({
     } as PositionCheckResult,
     canContinue: false,
     landmarks: undefined,
+    angleIndex: 0,
+    currentAngleLabel: 90,
     goToStep2: vi.fn(),
     goToStep3: vi.fn(),
+    startAngleCollect: vi.fn(),
     goBackToStep1: vi.fn(),
     recalibrate: vi.fn(),
     confirm: vi.fn(),
   }),
+  TOTAL_ANGLES: 3,
 }))
 
-// ─── Mock camera (getUserMedia) ───
+// --- Mock camera (getUserMedia) ---
 
 const mockTrack = { stop: vi.fn(), kind: 'video', enabled: true }
 const mockStream = {
@@ -71,9 +77,21 @@ const mockStream = {
   onremovetrack: null,
 } as unknown as MediaStream
 
+// Helper to set step with proper stepNumber
+function setMockStep(step: WizardStep) {
+  mockStep = step
+  switch (step) {
+    case 'welcome': mockStepNumber = 1; break
+    case 'position-check': mockStepNumber = 2; break
+    case 'angle-instruction':
+    case 'collect': mockStepNumber = 3; break
+    case 'confirm': mockStepNumber = 4; break
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
-  mockStep = 1
+  setMockStep('welcome')
   mockTrack.stop.mockClear()
 
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -94,8 +112,8 @@ afterEach(() => {
 })
 
 describe('CalibrationPage video element stability (integration)', () => {
-  it('video DOM element identity is preserved across step 1→2→3→4 transitions', async () => {
-    // Step 1: render
+  it('video DOM element identity is preserved across step welcome->position-check->collect->confirm transitions', async () => {
+    // welcome: render
     const { rerender } = await act(async () => {
       return render(<CalibrationPage />)
     })
@@ -107,8 +125,8 @@ describe('CalibrationPage video element stability (integration)', () => {
 
     const videoStep1 = screen.getByTestId('calibration-video') as HTMLVideoElement
 
-    // Step 2: rerender
-    mockStep = 2
+    // position-check: rerender
+    setMockStep('position-check')
     await act(async () => {
       rerender(<CalibrationPage />)
     })
@@ -118,8 +136,8 @@ describe('CalibrationPage video element stability (integration)', () => {
     // CRITICAL ASSERTION: same DOM node, not a new element
     expect(videoStep2).toBe(videoStep1)
 
-    // Step 3: rerender
-    mockStep = 3
+    // collect: rerender
+    setMockStep('collect')
     await act(async () => {
       rerender(<CalibrationPage />)
     })
@@ -127,8 +145,8 @@ describe('CalibrationPage video element stability (integration)', () => {
     const videoStep3 = screen.getByTestId('calibration-video') as HTMLVideoElement
     expect(videoStep3).toBe(videoStep1)
 
-    // Step 4: rerender
-    mockStep = 4
+    // confirm: rerender
+    setMockStep('confirm')
     await act(async () => {
       rerender(<CalibrationPage />)
     })
@@ -137,8 +155,8 @@ describe('CalibrationPage video element stability (integration)', () => {
     expect(videoStep4).toBe(videoStep1)
   })
 
-  it('video.srcObject retains stream binding after step 1→2 transition', async () => {
-    // Step 1: render + camera init
+  it('video.srcObject retains stream binding after welcome->position-check transition', async () => {
+    // welcome: render + camera init
     const { rerender } = await act(async () => {
       return render(<CalibrationPage />)
     })
@@ -153,8 +171,8 @@ describe('CalibrationPage video element stability (integration)', () => {
     // After camera init, srcObject should be the mock stream
     expect(videoStep1.srcObject).toBe(mockStream)
 
-    // Step 2: rerender
-    mockStep = 2
+    // position-check: rerender
+    setMockStep('position-check')
     await act(async () => {
       rerender(<CalibrationPage />)
     })
@@ -167,7 +185,7 @@ describe('CalibrationPage video element stability (integration)', () => {
     expect(videoStep2.srcObject).toBe(mockStream)
   })
 
-  it('video.srcObject retains stream through full step cycle 1→2→3→4→1', async () => {
+  it('video.srcObject retains stream through full step cycle welcome->position-check->collect->confirm->welcome', async () => {
     const { rerender } = await act(async () => {
       return render(<CalibrationPage />)
     })
@@ -180,8 +198,9 @@ describe('CalibrationPage video element stability (integration)', () => {
     expect(video.srcObject).toBe(mockStream)
 
     // Cycle through all steps
-    for (const step of [2, 3, 4, 1] as WizardStep[]) {
-      mockStep = step
+    const steps: WizardStep[] = ['position-check', 'collect', 'confirm', 'welcome']
+    for (const step of steps) {
+      setMockStep(step)
       await act(async () => {
         rerender(<CalibrationPage />)
       })
@@ -190,7 +209,7 @@ describe('CalibrationPage video element stability (integration)', () => {
       // Same DOM node
       expect(currentVideo).toBe(video)
       // Stream still bound (not cleared until unmount or explicit stop)
-      // On step 4 the confirm handler would call stopCamera, but we're
+      // On confirm the confirm handler would call stopCamera, but we're
       // not clicking confirm here, just rendering different steps.
       expect(currentVideo.srcObject).toBe(mockStream)
     }
@@ -210,8 +229,8 @@ describe('CalibrationPage video element stability (integration)', () => {
       return render(<CalibrationPage />)
     })
 
-    // Camera is still pending. Switch to step 2.
-    mockStep = 2
+    // Camera is still pending. Switch to position-check.
+    setMockStep('position-check')
     await act(async () => {
       rerender(<CalibrationPage />)
     })

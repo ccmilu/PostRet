@@ -22,11 +22,14 @@ const mockAddSample = vi.fn()
 const mockComputeBaseline = vi.fn()
 
 vi.mock('@/services/calibration/calibration-service', () => ({
-  CalibrationService: vi.fn().mockImplementation(() => ({
-    addSample: mockAddSample,
-    computeBaseline: mockComputeBaseline,
-    reset: vi.fn(),
-  })),
+  CalibrationService: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.addSample = mockAddSample
+    this.computeBaseline = mockComputeBaseline
+    this.reset = vi.fn()
+    this.startAngleCollection = vi.fn()
+    this.completeCurrentAngle = vi.fn()
+    this.computeMultiAngleBaseline = vi.fn().mockReturnValue({ baseline: {} })
+  }),
 }))
 
 // Mock angle-calculator
@@ -37,6 +40,15 @@ vi.mock('@/services/posture-analysis/angle-calculator', () => ({
     headTiltAngle: 0,
     faceFrameRatio: 0.15,
     shoulderDiff: 0,
+  }),
+}))
+
+// Mock screen-angle-estimator
+vi.mock('@/services/calibration/screen-angle-estimator', () => ({
+  extractScreenAngleSignals: vi.fn().mockReturnValue({
+    faceY: 0.5,
+    noseChinRatio: 0.3,
+    eyeMouthRatio: 0.2,
   }),
 }))
 
@@ -70,11 +82,12 @@ function createMockVideoRef() {
 
 describe('useCalibrationWizard', () => {
   describe('initial state', () => {
-    it('starts at step 1', () => {
+    it('starts at welcome step', () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
+      expect(result.current.stepNumber).toBe(1)
       expect(result.current.progress).toBe(0)
       expect(result.current.error).toBeNull()
       expect(result.current.canContinue).toBe(false)
@@ -89,7 +102,7 @@ describe('useCalibrationWizard', () => {
   })
 
   describe('step transitions', () => {
-    it('transitions from step 1 to step 2 via goToStep2', async () => {
+    it('transitions from welcome to position-check via goToStep2', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -97,25 +110,27 @@ describe('useCalibrationWizard', () => {
         result.current.goToStep2()
       })
 
-      expect(result.current.step).toBe(2)
+      expect(result.current.step).toBe('position-check')
+      expect(result.current.stepNumber).toBe(2)
     })
 
-    it('transitions from step 2 back to step 1 via goBackToStep1', async () => {
+    it('transitions from position-check back to welcome via goBackToStep1', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
       await act(async () => {
         result.current.goToStep2()
       })
-      expect(result.current.step).toBe(2)
+      expect(result.current.step).toBe('position-check')
 
       await act(async () => {
         result.current.goBackToStep1()
       })
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
+      expect(result.current.stepNumber).toBe(1)
     })
 
-    it('transitions from step 2 to step 3 via goToStep3', async () => {
+    it('transitions from position-check to angle-instruction via goToStep3', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -127,28 +142,30 @@ describe('useCalibrationWizard', () => {
         result.current.goToStep3()
       })
 
-      expect(result.current.step).toBe(3)
+      expect(result.current.step).toBe('angle-instruction')
+      expect(result.current.stepNumber).toBe(3)
     })
 
-    it('resets to step 1 via recalibrate', async () => {
+    it('resets to welcome via recalibrate', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
       await act(async () => {
         result.current.goToStep2()
       })
-      expect(result.current.step).toBe(2)
+      expect(result.current.step).toBe('position-check')
 
       await act(async () => {
         result.current.recalibrate()
       })
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
+      expect(result.current.stepNumber).toBe(1)
       expect(result.current.progress).toBe(0)
     })
   })
 
   describe('step 2 - position check', () => {
-    it('resets position state when entering step 2', async () => {
+    it('resets position state when entering position-check', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -160,7 +177,7 @@ describe('useCalibrationWizard', () => {
       expect(result.current.canContinue).toBe(false)
     })
 
-    it('starts position checking timer when entering step 2', async () => {
+    it('starts position checking timer when entering position-check', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -213,8 +230,8 @@ describe('useCalibrationWizard', () => {
     })
   })
 
-  describe('step 3 - mock collection', () => {
-    it('auto-advances to step 4 after mock collection completes', async () => {
+  describe('mock collection flow (multi-angle)', () => {
+    it('goToStep3 goes to angle-instruction, startAngleCollect starts collection', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -226,15 +243,71 @@ describe('useCalibrationWizard', () => {
         result.current.goToStep3()
       })
 
-      expect(result.current.step).toBe(3)
+      expect(result.current.step).toBe('angle-instruction')
+      expect(result.current.angleIndex).toBe(0)
+      expect(result.current.currentAngleLabel).toBe(90)
 
-      // Advance through mock collection (3 seconds)
+      // Start collecting for first angle
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500)
+        result.current.startAngleCollect()
       })
 
-      expect(result.current.step).toBe(4)
-      expect(result.current.progress).toBe(1)
+      expect(result.current.step).toBe('collect')
+    })
+
+    it('auto-advances to confirm after all 3 angles complete', async () => {
+      const videoRef = createMockVideoRef()
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      // Go to step 2 then step 3
+      await act(async () => {
+        result.current.goToStep2()
+      })
+      await act(async () => {
+        result.current.goToStep3()
+      })
+
+      // Angle 1 (90 degrees)
+      await act(async () => {
+        result.current.startAngleCollect()
+      })
+      expect(result.current.step).toBe('collect')
+
+      // Complete angle 1 mock collection (2s)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500)
+      })
+
+      // Should go to angle-instruction for next angle
+      expect(result.current.step).toBe('angle-instruction')
+      expect(result.current.angleIndex).toBe(1)
+
+      // Angle 2 (110 degrees)
+      await act(async () => {
+        result.current.startAngleCollect()
+      })
+      expect(result.current.step).toBe('collect')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500)
+      })
+
+      expect(result.current.step).toBe('angle-instruction')
+      expect(result.current.angleIndex).toBe(2)
+
+      // Angle 3 (130 degrees)
+      await act(async () => {
+        result.current.startAngleCollect()
+      })
+      expect(result.current.step).toBe('collect')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500)
+      })
+
+      // After all 3 angles, should go to confirm
+      expect(result.current.step).toBe('confirm')
+      expect(result.current.stepNumber).toBe(4)
     })
 
     it('progress increases during mock collection', async () => {
@@ -247,10 +320,13 @@ describe('useCalibrationWizard', () => {
       await act(async () => {
         result.current.goToStep3()
       })
-
-      // Advance 1.5 seconds (half of 3s mock duration)
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(1500)
+        result.current.startAngleCollect()
+      })
+
+      // Advance 1 second (half of 2s mock duration)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
       })
 
       expect(result.current.progress).toBeGreaterThan(0)
@@ -270,10 +346,22 @@ describe('useCalibrationWizard', () => {
         result.current.goToStep3()
       })
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500)
+        result.current.startAngleCollect()
       })
 
-      expect(result.current.step).toBe(4)
+      // Complete all 3 angles
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2500)
+        })
+        if (i < 2) {
+          await act(async () => {
+            result.current.startAngleCollect()
+          })
+        }
+      }
+
+      expect(result.current.step).toBe('confirm')
 
       await act(async () => {
         result.current.confirm()
@@ -300,7 +388,7 @@ describe('useCalibrationWizard', () => {
   })
 
   describe('detector reuse', () => {
-    it('reuses existing detector when going step2 → step1 → step2', async () => {
+    it('reuses existing detector when going step2 -> step1 -> step2', async () => {
       const videoRef = createMockVideoRef()
       const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
 
@@ -413,21 +501,21 @@ describe('useCalibrationWizard', () => {
       await act(async () => {
         result.current.goToStep2()
       })
-      expect(result.current.step).toBe(2)
+      expect(result.current.step).toBe('position-check')
 
       // Go back to step 1 (increments generation)
       await act(async () => {
         result.current.goBackToStep1()
       })
-      expect(result.current.step).toBe(1)
+      expect(result.current.step).toBe('welcome')
 
       // Stale timer ticks should not affect state
       await act(async () => {
         await vi.advanceTimersByTimeAsync(600)
       })
 
-      // Step should still be 1
-      expect(result.current.step).toBe(1)
+      // Step should still be welcome
+      expect(result.current.step).toBe('welcome')
     })
   })
 
