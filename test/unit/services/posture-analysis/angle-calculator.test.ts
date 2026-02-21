@@ -135,22 +135,23 @@ describe('angle-calculator', () => {
 
   describe('headTiltAngle', () => {
     it('returns ~0° when ears are level', () => {
+      // Normalized coords: leftEar has higher x (right side of frame)
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: 0, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: 0, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.6, y: 0.4, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.4, y: 0.4, z: 0, visibility: 1.0 },
       })
       const angle = headTiltAngle(landmarks)
       expect(Math.abs(angle)).toBeLessThan(2)
     })
 
     it('returns ~20° when head tilts left (left ear lower)', () => {
-      // Left ear is lower → leftEar.y > rightEar.y → positive atan2 result
+      // Left ear lower → leftEar.y > rightEar.y → positive atan2 result
       const tilt = toRadians(20)
-      const earSpan = 0.16 // distance between ears in x
+      const earSpan = 0.2 // dx = leftEar.x - rightEar.x in normalized coords
       const yDiff = Math.tan(tilt) * earSpan
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: yDiff / 2, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: -yDiff / 2, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.6, y: 0.4 + yDiff / 2, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.4, y: 0.4 - yDiff / 2, z: 0, visibility: 1.0 },
       })
       const angle = headTiltAngle(landmarks)
       expect(angle).toBeGreaterThan(18)
@@ -159,15 +160,18 @@ describe('angle-calculator', () => {
 
     it('returns negative when head tilts right (right ear lower)', () => {
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.03, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: 0.03, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.6, y: 0.37, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.4, y: 0.43, z: 0, visibility: 1.0 },
       })
       const angle = headTiltAngle(landmarks)
       expect(angle).toBeLessThan(0)
     })
 
     it('does not mutate input landmarks', () => {
-      const landmarks = createUprightLandmarks()
+      const landmarks = createMockLandmarks({
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.6, y: 0.4, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.4, y: 0.4, z: 0, visibility: 1.0 },
+      })
       const copy = landmarks.map(l => ({ ...l }))
       headTiltAngle(landmarks)
       expect(landmarks).toEqual(copy)
@@ -175,47 +179,51 @@ describe('angle-calculator', () => {
   })
 
   describe('faceToFrameRatio', () => {
-    it('returns correct ratio for normal distance', () => {
+    it('returns correct ratio from normalized landmarks', () => {
+      // Normalized landmarks: ear x positions represent fraction of frame width
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: 0, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: 0, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.30, y: 0.5, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.70, y: 0.5, z: 0, visibility: 1.0 },
       })
-      const ratio = faceToFrameRatio(landmarks, 1.0)
-      expect(ratio).toBeCloseTo(0.16, 2)
+      const ratio = faceToFrameRatio(landmarks)
+      expect(ratio).toBeCloseTo(0.40, 2)
     })
 
     it('returns larger ratio when face is closer', () => {
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.20, y: 0, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.20, y: 0, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.20, y: 0.5, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.80, y: 0.5, z: 0, visibility: 1.0 },
       })
-      const ratio = faceToFrameRatio(landmarks, 1.0)
-      expect(ratio).toBeCloseTo(0.40, 2)
-      expect(ratio).toBeGreaterThan(0.35)
+      const ratio = faceToFrameRatio(landmarks)
+      expect(ratio).toBeCloseTo(0.60, 2)
+      expect(ratio).toBeGreaterThan(0.55)
     })
 
-    it('returns smaller ratio for wider frame', () => {
+    it('returns smaller ratio when face is farther', () => {
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: 0, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: 0, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.42, y: 0.5, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.58, y: 0.5, z: 0, visibility: 1.0 },
       })
-      const ratio = faceToFrameRatio(landmarks, 2.0)
-      expect(ratio).toBeCloseTo(0.08, 2)
+      const ratio = faceToFrameRatio(landmarks)
+      expect(ratio).toBeCloseTo(0.16, 2)
     })
 
-    it('returns 0 when frameWidth is 0', () => {
+    it('returns 0 when ears overlap', () => {
       const landmarks = createMockLandmarks({
-        [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: 0, z: 0, visibility: 1.0 },
-        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: 0, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.5, y: 0.5, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.5, y: 0.5, z: 0, visibility: 1.0 },
       })
-      const ratio = faceToFrameRatio(landmarks, 0)
+      const ratio = faceToFrameRatio(landmarks)
       expect(ratio).toBe(0)
     })
 
     it('does not mutate input landmarks', () => {
-      const landmarks = createUprightLandmarks()
+      const landmarks = createMockLandmarks({
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.3, y: 0.5, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.7, y: 0.5, z: 0, visibility: 1.0 },
+      })
       const copy = landmarks.map(l => ({ ...l }))
-      faceToFrameRatio(landmarks, 1.0)
+      faceToFrameRatio(landmarks)
       expect(landmarks).toEqual(copy)
     })
   })
@@ -273,9 +281,19 @@ describe('angle-calculator', () => {
   })
 
   describe('extractPostureAngles', () => {
+    // Create normalized landmarks with ear positions in [0,1] range
+    // In MediaPipe non-mirrored: leftEar.x > rightEar.x (person's left is screen right)
+    function createNormalizedLandmarks(): Landmark[] {
+      return createMockLandmarks({
+        [PoseLandmarkIndex.LEFT_EAR]: { x: 0.58, y: 0.3, z: 0, visibility: 1.0 },
+        [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.42, y: 0.3, z: 0, visibility: 1.0 },
+      })
+    }
+
     it('returns a complete PostureAngles object for upright posture', () => {
-      const landmarks = createUprightLandmarks()
-      const result = extractPostureAngles(landmarks, 640)
+      const worldLandmarks = createUprightLandmarks()
+      const normalizedLandmarks = createNormalizedLandmarks()
+      const result = extractPostureAngles(worldLandmarks, normalizedLandmarks)
       expect(result).toHaveProperty('headForwardAngle')
       expect(result).toHaveProperty('torsoAngle')
       expect(result).toHaveProperty('headTiltAngle')
@@ -289,8 +307,9 @@ describe('angle-calculator', () => {
     })
 
     it('returns small angles for upright posture', () => {
-      const landmarks = createUprightLandmarks()
-      const result = extractPostureAngles(landmarks, 640)
+      const worldLandmarks = createUprightLandmarks()
+      const normalizedLandmarks = createNormalizedLandmarks()
+      const result = extractPostureAngles(worldLandmarks, normalizedLandmarks)
       expect(result.headForwardAngle).toBeLessThan(5)
       expect(result.torsoAngle).toBeLessThan(5)
       expect(Math.abs(result.headTiltAngle)).toBeLessThan(5)
@@ -298,21 +317,24 @@ describe('angle-calculator', () => {
     })
 
     it('combines individual function results correctly', () => {
-      const landmarks = createUprightLandmarks()
-      const frameWidth = 640
-      const result = extractPostureAngles(landmarks, frameWidth)
-      expect(result.headForwardAngle).toBeCloseTo(headForwardAngle(landmarks), 5)
-      expect(result.torsoAngle).toBeCloseTo(torsoAngle(landmarks), 5)
-      expect(result.headTiltAngle).toBeCloseTo(headTiltAngle(landmarks), 5)
-      expect(result.faceFrameRatio).toBeCloseTo(faceToFrameRatio(landmarks, frameWidth), 5)
-      expect(result.shoulderDiff).toBeCloseTo(shoulderAsymmetry(landmarks), 5)
+      const worldLandmarks = createUprightLandmarks()
+      const normalizedLandmarks = createNormalizedLandmarks()
+      const result = extractPostureAngles(worldLandmarks, normalizedLandmarks)
+      expect(result.headForwardAngle).toBeCloseTo(headForwardAngle(worldLandmarks), 5)
+      expect(result.torsoAngle).toBeCloseTo(torsoAngle(worldLandmarks), 5)
+      expect(result.headTiltAngle).toBeCloseTo(headTiltAngle(normalizedLandmarks), 5)
+      expect(result.faceFrameRatio).toBeCloseTo(faceToFrameRatio(normalizedLandmarks), 5)
+      expect(result.shoulderDiff).toBeCloseTo(shoulderAsymmetry(worldLandmarks), 5)
     })
 
     it('does not mutate input landmarks', () => {
-      const landmarks = createUprightLandmarks()
-      const copy = landmarks.map(l => ({ ...l }))
-      extractPostureAngles(landmarks, 640)
-      expect(landmarks).toEqual(copy)
+      const worldLandmarks = createUprightLandmarks()
+      const normalizedLandmarks = createNormalizedLandmarks()
+      const worldCopy = worldLandmarks.map(l => ({ ...l }))
+      const normCopy = normalizedLandmarks.map(l => ({ ...l }))
+      extractPostureAngles(worldLandmarks, normalizedLandmarks)
+      expect(worldLandmarks).toEqual(worldCopy)
+      expect(normalizedLandmarks).toEqual(normCopy)
     })
   })
 
@@ -370,31 +392,29 @@ describe('angle-calculator', () => {
   })
 
   describe('headTiltAngle — real photos', () => {
-    it('good posture photos have headTilt near ±180° (ears roughly level in world coords)', () => {
+    it('good posture photos have headTilt near 0° (ears roughly level)', () => {
+      // headTiltAngle uses normalized landmarks; with dx=leftEar.x-rightEar.x > 0
+      // for standard facing-camera pose, level ears give ~0°
       const goodPhotos = loadLandmarksByCategory('good')
       for (const { landmarkData, metadata } of goodPhotos) {
-        const tilt = headTiltAngle(landmarkData.worldLandmarks)
-        // In real world landmarks, dx (rightEar.x - leftEar.x) is very small,
-        // making atan2 produce angles near ±180°. Good posture = near ±180°.
-        const absTilt = Math.abs(tilt)
-        expect(absTilt, `Photo ${metadata.photoId}`).toBeGreaterThan(160)
+        const tilt = headTiltAngle(landmarkData.landmarks)
+        expect(Math.abs(tilt), `Photo ${metadata.photoId}`).toBeLessThan(12)
       }
     })
 
-    it('head_tilt photos deviate more from 180° than good posture', () => {
+    it('head_tilt photos have larger absolute tilt than good posture average', () => {
       const goodPhotos = loadLandmarksByCategory('good')
       const tiltPhotos = loadLandmarksByCategory('head_tilt')
 
-      // Deviation from 180° — smaller means more level
-      const goodDeviation = goodPhotos.reduce(
-        (sum, p) => sum + (180 - Math.abs(headTiltAngle(p.landmarkData.worldLandmarks))), 0
+      const goodAvgAbsTilt = goodPhotos.reduce(
+        (sum, p) => sum + Math.abs(headTiltAngle(p.landmarkData.landmarks)), 0
       ) / goodPhotos.length
 
-      const tiltDeviation = tiltPhotos.reduce(
-        (sum, p) => sum + (180 - Math.abs(headTiltAngle(p.landmarkData.worldLandmarks))), 0
+      const tiltAvgAbsTilt = tiltPhotos.reduce(
+        (sum, p) => sum + Math.abs(headTiltAngle(p.landmarkData.landmarks)), 0
       ) / tiltPhotos.length
 
-      expect(tiltDeviation).toBeGreaterThan(goodDeviation)
+      expect(tiltAvgAbsTilt).toBeGreaterThan(goodAvgAbsTilt)
     })
   })
 
@@ -418,7 +438,7 @@ describe('angle-calculator', () => {
       for (const { landmarkData, metadata } of allPhotos) {
         const angles = extractPostureAngles(
           landmarkData.worldLandmarks,
-          landmarkData.frameWidth,
+          landmarkData.landmarks,
         )
         expect(Number.isFinite(angles.headForwardAngle),
           `Photo ${metadata.photoId} headForward`).toBe(true)
@@ -440,7 +460,7 @@ describe('angle-calculator', () => {
       for (const { landmarkData, metadata } of goodPhotos) {
         const angles = extractPostureAngles(
           landmarkData.worldLandmarks,
-          landmarkData.frameWidth,
+          landmarkData.landmarks,
         )
         expect(angles.headForwardAngle,
           `Photo ${metadata.photoId}: ${metadata.notes}`).toBeLessThan(15)

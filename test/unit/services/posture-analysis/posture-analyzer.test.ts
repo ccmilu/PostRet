@@ -3,11 +3,19 @@ import { PostureAnalyzer } from '@/services/posture-analysis/posture-analyzer'
 import type { DetectionFrame, Landmark } from '@/services/pose-detection/pose-types'
 import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { CalibrationData, RuleToggles } from '@/types/settings'
+import { extractPostureAngles } from '@/services/posture-analysis/angle-calculator'
+import {
+  loadLandmarks,
+  loadLandmarksWithMetadata,
+  loadLandmarksByCategory,
+  toDetectionFrame,
+} from '../../../helpers/load-landmarks'
 
 // --- Helpers ---
 
 function createMockFrame(overrides?: {
   worldLandmarks?: Partial<Record<number, Partial<Landmark>>>
+  normalizedLandmarks?: Partial<Record<number, Partial<Landmark>>>
   frameWidth?: number
   timestamp?: number
 }): DetectionFrame {
@@ -23,14 +31,46 @@ function createMockFrame(overrides?: {
     [PoseLandmarkIndex.RIGHT_HIP]: { x: 0.1, y: 0.2, z: 0, visibility: 1.0 },
   }
 
-  const merged = { ...goodPosture, ...overrides?.worldLandmarks }
+  // Default normalized landmarks with ears in [0,1] range for faceToFrameRatio
+  // In MediaPipe non-mirrored output: person's left ear → higher x (right side of frame)
+  const defaultNormalized: Partial<Record<number, Partial<Landmark>>> = {
+    [PoseLandmarkIndex.NOSE]: { x: 0.5, y: 0.4, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.LEFT_EYE]: { x: 0.54, y: 0.35, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.RIGHT_EYE]: { x: 0.46, y: 0.35, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.LEFT_EAR]: { x: 0.58, y: 0.4, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.42, y: 0.4, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.MOUTH_LEFT]: { x: 0.53, y: 0.45, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.MOUTH_RIGHT]: { x: 0.47, y: 0.45, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.LEFT_SHOULDER]: { x: 0.65, y: 0.55, z: 0, visibility: 1.0 },
+    [PoseLandmarkIndex.RIGHT_SHOULDER]: { x: 0.35, y: 0.55, z: 0, visibility: 1.0 },
+  }
+
+  const worldMerged = { ...goodPosture, ...overrides?.worldLandmarks }
   const worldLandmarks = Array.from({ length: 33 }, (_, i) => ({
     ...defaultLandmark,
-    ...merged[i],
+    ...worldMerged[i],
   }))
 
+  const normMerged = { ...defaultNormalized, ...overrides?.normalizedLandmarks }
+  const landmarks = Array.from({ length: 33 }, (_, i) => ({
+    ...defaultLandmark,
+    ...normMerged[i],
+  }))
+
+  // Copy visibility from world landmarks to normalized landmarks
+  for (const idx of [
+    PoseLandmarkIndex.LEFT_EAR,
+    PoseLandmarkIndex.RIGHT_EAR,
+    PoseLandmarkIndex.LEFT_SHOULDER,
+    PoseLandmarkIndex.RIGHT_SHOULDER,
+    PoseLandmarkIndex.LEFT_HIP,
+    PoseLandmarkIndex.RIGHT_HIP,
+  ]) {
+    landmarks[idx] = { ...landmarks[idx], visibility: worldLandmarks[idx].visibility }
+  }
+
   return {
-    landmarks: worldLandmarks,
+    landmarks,
     worldLandmarks,
     timestamp: overrides?.timestamp ?? Date.now(),
     frameWidth: overrides?.frameWidth ?? 640,
@@ -44,7 +84,7 @@ function createGoodCalibration(): CalibrationData {
     headForwardAngle: 0,
     torsoAngle: 0,
     headTiltAngle: 0,
-    faceFrameRatio: 0.16 / 640, // |(-0.08) - 0.08| / 640
+    faceFrameRatio: 0.16, // |0.42 - 0.58| from normalized landmarks
     shoulderDiff: 0,
     timestamp: Date.now(),
   }
@@ -128,10 +168,16 @@ describe('PostureAnalyzer', () => {
 
     it('detects head tilt', () => {
       // Left ear much lower than right ear
+      // headTiltAngle now uses normalized landmarks
       const badFrame = createMockFrame({
         worldLandmarks: {
           [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.50, z: 0, visibility: 1.0 },
           [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: -0.70, z: 0, visibility: 1.0 },
+        },
+        normalizedLandmarks: {
+          // Left ear lower → leftEar.y > rightEar.y in normalized coords (y increases downward)
+          [PoseLandmarkIndex.LEFT_EAR]: { x: 0.58, y: 0.50, z: 0, visibility: 1.0 },
+          [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.42, y: 0.30, z: 0, visibility: 1.0 },
         },
       })
       const result = feedFrames(analyzer, badFrame, 10)
@@ -284,11 +330,12 @@ describe('PostureAnalyzer', () => {
   describe('updateCalibration', () => {
     it('changes baseline for deviation calculation', () => {
       // Create an analyzer with calibration matching a forward-leaning pose
+      // The mock frame with z=-0.15 produces ~37° headForward
       const forwardCalibration: CalibrationData = {
-        headForwardAngle: 25,
+        headForwardAngle: 37,
         torsoAngle: 0,
         headTiltAngle: 0,
-        faceFrameRatio: 0.00025,
+        faceFrameRatio: 0.16,
         shoulderDiff: 0,
         timestamp: Date.now(),
       }
@@ -414,6 +461,126 @@ describe('PostureAnalyzer', () => {
       const result = analyzer.analyze(frame)
       // avg = (0.8 + 0.9 + 0.7 + 0.6) / 4 = 3.0 / 4 = 0.75
       expect(result.confidence).toBeCloseTo(0.75, 1)
+    })
+  })
+
+  // ============================================================
+  // Real photo landmarks tests
+  // ============================================================
+
+  describe('real photos — good posture → isGood=true', () => {
+    it('good posture photo 1 calibrated with itself → isGood=true', () => {
+      const data = loadLandmarks(1)
+      const frame = toDetectionFrame(data)
+      const angles = extractPostureAngles(data.worldLandmarks, data.landmarks)
+      const cal: CalibrationData = {
+        headForwardAngle: angles.headForwardAngle,
+        torsoAngle: angles.torsoAngle,
+        headTiltAngle: angles.headTiltAngle,
+        faceFrameRatio: angles.faceFrameRatio,
+        shoulderDiff: angles.shoulderDiff,
+        timestamp: Date.now(),
+      }
+      const a = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+      const result = feedFrames(a, frame, 10)
+      expect(result.isGood).toBe(true)
+      expect(result.violations).toHaveLength(0)
+    })
+
+    it('multiple good posture photos calibrated with photo 1 → isGood=true', () => {
+      // Calibrate with photo 1 (standard posture, normal lighting)
+      const calData = loadLandmarks(1)
+      const calAngles = extractPostureAngles(calData.worldLandmarks, calData.landmarks)
+      const cal: CalibrationData = {
+        headForwardAngle: calAngles.headForwardAngle,
+        torsoAngle: calAngles.torsoAngle,
+        headTiltAngle: calAngles.headTiltAngle,
+        faceFrameRatio: calAngles.faceFrameRatio,
+        shoulderDiff: calAngles.shoulderDiff,
+        timestamp: Date.now(),
+      }
+
+      // Test photos 2,3,5,7,8 — all normal-light good posture
+      for (const photoId of [2, 3, 5, 7, 8]) {
+        const data = loadLandmarks(photoId)
+        const frame = toDetectionFrame(data)
+        const a = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+        const result = feedFrames(a, frame, 10)
+        expect(result.isGood, `Photo ${photoId} should be good`).toBe(true)
+      }
+    })
+  })
+
+  describe('real photos — forward head → detects FORWARD_HEAD', () => {
+    it('severe forward head photos trigger FORWARD_HEAD violation', () => {
+      // Calibrate with good posture photo 1
+      const calData = loadLandmarks(1)
+      const calAngles = extractPostureAngles(calData.worldLandmarks, calData.landmarks)
+      const cal: CalibrationData = {
+        headForwardAngle: calAngles.headForwardAngle,
+        torsoAngle: calAngles.torsoAngle,
+        headTiltAngle: calAngles.headTiltAngle,
+        faceFrameRatio: calAngles.faceFrameRatio,
+        shoulderDiff: calAngles.shoulderDiff,
+        timestamp: Date.now(),
+      }
+
+      // Photo 13 = severe forward head (~10cm), Photo 14 = moderate but extreme angle
+      for (const photoId of [13, 14]) {
+        const { landmarkData, metadata } = loadLandmarksWithMetadata(photoId)
+        const frame = toDetectionFrame(landmarkData)
+        const a = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+        const result = feedFrames(a, frame, 15)
+        expect(result.isGood, `Photo ${photoId}: ${metadata.notes}`).toBe(false)
+        expect(
+          result.violations.some(v => v.rule === 'FORWARD_HEAD'),
+          `Photo ${photoId} should have FORWARD_HEAD`,
+        ).toBe(true)
+      }
+    })
+
+    it('forward_head category: average deviation > good posture average', () => {
+      const calData = loadLandmarks(1)
+      const calAngles = extractPostureAngles(calData.worldLandmarks, calData.landmarks)
+      const cal: CalibrationData = {
+        headForwardAngle: calAngles.headForwardAngle,
+        torsoAngle: calAngles.torsoAngle,
+        headTiltAngle: calAngles.headTiltAngle,
+        faceFrameRatio: calAngles.faceFrameRatio,
+        shoulderDiff: calAngles.shoulderDiff,
+        timestamp: Date.now(),
+      }
+
+      const goodPhotos = loadLandmarksByCategory('good').filter(p => p.metadata.lighting === 'normal')
+      const fwdPhotos = loadLandmarksByCategory('forward_head')
+
+      function getAvgViolations(photos: typeof goodPhotos): number {
+        let totalViolations = 0
+        for (const { landmarkData } of photos) {
+          const frame = toDetectionFrame(landmarkData)
+          const a = new PostureAnalyzer(cal, 0.5, ALL_RULES_ON)
+          const result = feedFrames(a, frame, 10)
+          totalViolations += result.violations.length
+        }
+        return totalViolations / photos.length
+      }
+
+      expect(getAvgViolations(fwdPhotos)).toBeGreaterThan(getAvgViolations(goodPhotos))
+    })
+  })
+
+  describe('real photos — confidence reflects visibility', () => {
+    it('normal photos have reasonable confidence (> 0.7)', () => {
+      // Some good-posture photos have landmark visibility < 0.9 for
+      // individual critical landmarks; average confidence is still > 0.7
+      const goodPhotos = loadLandmarksByCategory('good')
+        .filter(p => p.metadata.lighting === 'normal')
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const frame = toDetectionFrame(landmarkData)
+        const a = new PostureAnalyzer(calibration, 0.5, ALL_RULES_ON)
+        const result = a.analyze(frame)
+        expect(result.confidence, `Photo ${metadata.photoId}`).toBeGreaterThan(0.7)
+      }
     })
   })
 })
