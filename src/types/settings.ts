@@ -59,6 +59,7 @@ export interface DisplaySettings {
   readonly selectedCamera: string
   readonly autoLaunch: boolean
   readonly ignorePeriods: readonly IgnorePeriod[]
+  readonly weekendIgnore: boolean
 }
 
 export interface IgnorePeriod {
@@ -95,6 +96,7 @@ export const DEFAULT_SETTINGS: PostureSettings = {
     selectedCamera: '',
     autoLaunch: false,
     ignorePeriods: [],
+    weekendIgnore: false,
   },
   advanced: {
     debugMode: false,
