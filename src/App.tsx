@@ -10,7 +10,7 @@ type AppPage = 'settings' | 'calibration'
 
 export function App() {
   const [page, setPage] = useState<AppPage>('settings')
-  const { settings, loading } = useSettings()
+  const { settings, loading, reloadSettings } = useSettings()
   const detection = usePostureDetection()
 
   // Auto-start detection when calibration data is available
@@ -56,8 +56,8 @@ export function App() {
 
   const handleCalibrationComplete = useCallback(() => {
     setPage('settings')
-    // Detection will auto-start via the effect when settings reload with new calibration data
-  }, [])
+    reloadSettings()
+  }, [reloadSettings])
 
   if (page === 'calibration') {
     return <CalibrationPage onComplete={handleCalibrationComplete} />

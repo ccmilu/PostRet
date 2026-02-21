@@ -17,6 +17,7 @@ export interface UseSettingsReturn {
   readonly updateReminder: (
     partial: Partial<ReminderSettings>,
   ) => Promise<void>
+  readonly reloadSettings: () => Promise<void>
 }
 
 function hasElectronAPI(): boolean {
@@ -31,6 +32,19 @@ export function useSettings(): UseSettingsReturn {
   const [settings, setSettings] = useState<PostureSettings>(DEFAULT_SETTINGS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const reloadSettings = useCallback(async (): Promise<void> => {
+    try {
+      if (hasElectronAPI()) {
+        const loaded = await window.electronAPI.getSettings()
+        setSettings(loaded)
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to load settings'
+      setError(message)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -110,5 +124,6 @@ export function useSettings(): UseSettingsReturn {
     updateSettings,
     updateDetection,
     updateReminder,
+    reloadSettings,
   }
 }
