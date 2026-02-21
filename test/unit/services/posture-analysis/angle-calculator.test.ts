@@ -9,6 +9,11 @@ import {
 } from '@/services/posture-analysis/angle-calculator'
 import { Landmark, PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import { toRadians } from '@/utils/math'
+import {
+  loadLandmarks,
+  loadLandmarksWithMetadata,
+  loadLandmarksByCategory,
+} from '../../../helpers/load-landmarks'
 
 // Helper: create 33-element landmark array with overrides for specific indices
 function createMockLandmarks(
@@ -308,6 +313,138 @@ describe('angle-calculator', () => {
       const copy = landmarks.map(l => ({ ...l }))
       extractPostureAngles(landmarks, 640)
       expect(landmarks).toEqual(copy)
+    })
+  })
+
+  // ============================================================
+  // Real photo landmarks tests
+  // ============================================================
+
+  describe('headForwardAngle — real photos', () => {
+    it('good posture photos with normal lighting produce headForward < 15°', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+      const normalLightPhotos = goodPhotos.filter(p => p.metadata.lighting === 'normal')
+      expect(normalLightPhotos.length).toBeGreaterThan(0)
+      for (const { landmarkData, metadata } of normalLightPhotos) {
+        const angle = headForwardAngle(landmarkData.worldLandmarks)
+        expect(angle, `Photo ${metadata.photoId}: ${metadata.notes}`).toBeLessThan(15)
+        expect(angle).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    it('good posture photos (all lighting) produce headForward < 22°', () => {
+      // Dim lighting can inflate headForward due to landmark noise
+      const goodPhotos = loadLandmarksByCategory('good')
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const angle = headForwardAngle(landmarkData.worldLandmarks)
+        expect(angle, `Photo ${metadata.photoId}: ${metadata.notes}`).toBeLessThan(22)
+        expect(angle).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    it('severe forward_head photos produce headForward > 20°', () => {
+      // Photo 13 = severe (~10cm forward), Photo 14 = moderate but extreme angle
+      const data13 = loadLandmarksWithMetadata(13)
+      const angle13 = headForwardAngle(data13.landmarkData.worldLandmarks)
+      expect(angle13, 'Photo 13 severe forward head').toBeGreaterThan(20)
+
+      const data14 = loadLandmarksWithMetadata(14)
+      const angle14 = headForwardAngle(data14.landmarkData.worldLandmarks)
+      expect(angle14, 'Photo 14 moderate forward head').toBeGreaterThan(20)
+    })
+
+    it('forward_head photos have higher headForward than good posture average', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+      const fwdPhotos = loadLandmarksByCategory('forward_head')
+
+      const goodAvg = goodPhotos.reduce(
+        (sum, p) => sum + headForwardAngle(p.landmarkData.worldLandmarks), 0
+      ) / goodPhotos.length
+
+      const fwdAvg = fwdPhotos.reduce(
+        (sum, p) => sum + headForwardAngle(p.landmarkData.worldLandmarks), 0
+      ) / fwdPhotos.length
+
+      expect(fwdAvg).toBeGreaterThan(goodAvg)
+    })
+  })
+
+  describe('headTiltAngle — real photos', () => {
+    it('good posture photos have headTilt near ±180° (ears roughly level in world coords)', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const tilt = headTiltAngle(landmarkData.worldLandmarks)
+        // In real world landmarks, dx (rightEar.x - leftEar.x) is very small,
+        // making atan2 produce angles near ±180°. Good posture = near ±180°.
+        const absTilt = Math.abs(tilt)
+        expect(absTilt, `Photo ${metadata.photoId}`).toBeGreaterThan(160)
+      }
+    })
+
+    it('head_tilt photos deviate more from 180° than good posture', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+      const tiltPhotos = loadLandmarksByCategory('head_tilt')
+
+      // Deviation from 180° — smaller means more level
+      const goodDeviation = goodPhotos.reduce(
+        (sum, p) => sum + (180 - Math.abs(headTiltAngle(p.landmarkData.worldLandmarks))), 0
+      ) / goodPhotos.length
+
+      const tiltDeviation = tiltPhotos.reduce(
+        (sum, p) => sum + (180 - Math.abs(headTiltAngle(p.landmarkData.worldLandmarks))), 0
+      ) / tiltPhotos.length
+
+      expect(tiltDeviation).toBeGreaterThan(goodDeviation)
+    })
+  })
+
+  describe('shoulderAsymmetry — real photos', () => {
+    it('photos with SHOULDER_ASYMMETRY violation have shoulderDiff > 4°', () => {
+      // Photos 25, 26, 30 have expectedViolations including SHOULDER_ASYMMETRY
+      for (const photoId of [25, 26, 30]) {
+        const { landmarkData, metadata } = loadLandmarksWithMetadata(photoId)
+        const diff = shoulderAsymmetry(landmarkData.worldLandmarks)
+        expect(diff, `Photo ${photoId}: ${metadata.notes}`).toBeGreaterThan(4)
+      }
+    })
+  })
+
+  describe('extractPostureAngles — real photos', () => {
+    it('returns all finite values for every real photo', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+      const fwdPhotos = loadLandmarksByCategory('forward_head')
+      const allPhotos = [...goodPhotos, ...fwdPhotos]
+
+      for (const { landmarkData, metadata } of allPhotos) {
+        const angles = extractPostureAngles(
+          landmarkData.worldLandmarks,
+          landmarkData.frameWidth,
+        )
+        expect(Number.isFinite(angles.headForwardAngle),
+          `Photo ${metadata.photoId} headForward`).toBe(true)
+        expect(Number.isFinite(angles.torsoAngle),
+          `Photo ${metadata.photoId} torso`).toBe(true)
+        expect(Number.isFinite(angles.headTiltAngle),
+          `Photo ${metadata.photoId} headTilt`).toBe(true)
+        expect(Number.isFinite(angles.faceFrameRatio),
+          `Photo ${metadata.photoId} faceFrameRatio`).toBe(true)
+        expect(Number.isFinite(angles.shoulderDiff),
+          `Photo ${metadata.photoId} shoulderDiff`).toBe(true)
+      }
+    })
+
+    it('good posture photos with normal lighting: headForward < 15° consistently', () => {
+      const goodPhotos = loadLandmarksByCategory('good')
+        .filter(p => p.metadata.lighting === 'normal')
+      expect(goodPhotos.length).toBeGreaterThan(0)
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const angles = extractPostureAngles(
+          landmarkData.worldLandmarks,
+          landmarkData.frameWidth,
+        )
+        expect(angles.headForwardAngle,
+          `Photo ${metadata.photoId}: ${metadata.notes}`).toBeLessThan(15)
+      }
     })
   })
 })
