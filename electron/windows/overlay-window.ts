@@ -149,7 +149,7 @@ export class OverlayWindow {
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
-      ...(vibrancy ? { vibrancy } : {}),
+      ...(vibrancy ? { vibrancy, visualEffectState: 'active' } : {}),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -159,8 +159,11 @@ export class OverlayWindow {
 
     this.window.setIgnoreMouseEvents(true)
 
-    // Load a minimal blank page — no HTML file needed
-    this.window.loadURL('data:text/html,<html><body></body></html>')
+    // Body must have content for vibrancy to render on;
+    // a full-viewport element with minimal background ensures
+    // NSVisualEffectView has a surface to composite onto.
+    const overlayHtml = `data:text/html,<html><body style="margin:0;width:100vw;height:100vh;background:rgba(0,0,0,0.01)"></body></html>`
+    this.window.loadURL(overlayHtml)
 
     this.window.once('ready-to-show', () => {
       this.window?.show()

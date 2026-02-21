@@ -184,7 +184,7 @@ describe('OverlayWindow', () => {
       overlay.show()
 
       expect(mockInstance.loadURL).toHaveBeenCalledWith(
-        'data:text/html,<html><body></body></html>'
+        expect.stringContaining('data:text/html,')
       )
     })
 
@@ -211,6 +211,7 @@ describe('OverlayWindow', () => {
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBe('fullscreen-ui')
+      expect(config.visualEffectState).toBe('active')
     })
 
     it('uses under-window vibrancy on legacy macOS', () => {
@@ -222,6 +223,7 @@ describe('OverlayWindow', () => {
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBe('under-window')
+      expect(config.visualEffectState).toBe('active')
     })
 
     it('skips vibrancy on unsupported platforms', () => {
@@ -232,6 +234,7 @@ describe('OverlayWindow', () => {
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBeUndefined()
+      expect(config.visualEffectState).toBeUndefined()
     })
 
     it('uses vibrancy override when provided', () => {
@@ -240,6 +243,7 @@ describe('OverlayWindow', () => {
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBe('hud')
+      expect(config.visualEffectState).toBe('active')
     })
 
     it('configures secure webPreferences', () => {
