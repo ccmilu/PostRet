@@ -182,6 +182,20 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 - [ ] 关键链路有不 mock 中间层的集成测试？
 - [ ] mock 数据反映真实场景？
 
+## 硬件/系统资源测试规则（Phase 2.2 教训）
+
+mock 测试无法验证涉及硬件设备（摄像头、麦克风）、系统资源竞态（设备释放/获取）和 DOM 生命周期（元素挂载/卸载导致的 ref 丢失）的问题。
+
+**核心规则：**
+- 涉及硬件/系统资源的关键链路，任务分配时必须标注"mock 无法覆盖的风险点"
+- 对这些风险点，至少用一种方式验证真实行为：手动冒烟测试、真实 Electron E2E、或检查 DOM ref 稳定性
+- 条件渲染切换时检查 ref 引用是否保持稳定（不因 React 重新挂载导致丢失绑定）
+- 交叉测试者不仅要换人，还要换测试方法论——如果实现者写了 mock 测试，交叉测试者应补充非 mock 测试
+
+**具体案例：**
+- 摄像头设备释放竞态：stopAsync 300ms 延迟的 mock 测试全部通过，但真实环境仍复现。根因是 video 元素条件渲染导致 DOM 节点切换、stream 丢失
+- 检测自启动依赖 renderer 窗口：单元测试 mock 了 useEffect，无法发现设置窗口未创建时 useEffect 不触发
+
 ## Agent Browser 规则
 
 **所有涉及 UI 或视觉效果的功能，必须先通过 Agent Browser 交互式验证，再编写自动化测试脚本。** Agent Browser 通过 `agent-browser` skill 调用，基于 Bash 命令行，主会话和 teammate 均可使用。（如果要用到，在创建teammate时应该明确说明用这个skill）
