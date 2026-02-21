@@ -96,26 +96,41 @@ export function evaluateAllRules(
 ): readonly PostureViolation[] {
   const results: PostureViolation[] = []
 
-  const ruleChecks: Array<{
-    enabled: boolean
-    evaluate: () => RuleResult
-  }> = [
-    { enabled: toggles.forwardHead, evaluate: () => forwardHeadRule(
+  // Evaluate forward head first — if triggered, suppress tooClose since both
+  // share faceFrameRatio delta and head leaning forward is not the same as
+  // being too close to the screen.
+  let forwardHeadTriggered = false
+  if (toggles.forwardHead) {
+    const fhResult = forwardHeadRule(
       { ffrDelta: deviations.faceFrameRatio, angleDelta: deviations.headForward },
       thresholds.forwardHead, thresholds.forwardHeadFFR,
-    ) },
-    { enabled: toggles.slouch, evaluate: () => slouchRule(deviations.torsoSlouch, thresholds.slouch) },
-    { enabled: toggles.headTilt, evaluate: () => headTiltRule(deviations.headTilt, thresholds.headTilt) },
-    { enabled: toggles.tooClose, evaluate: () => tooCloseRule(deviations.faceFrameRatio, thresholds.tooClose) },
-    { enabled: toggles.shoulderAsymmetry, evaluate: () => shoulderAsymmetryRule(deviations.shoulderDiff, thresholds.shoulderAsymmetry) },
-  ]
-
-  for (const check of ruleChecks) {
-    if (!check.enabled) continue
-    const result = check.evaluate()
-    if (result !== null) {
-      results.push(result)
+    )
+    if (fhResult !== null) {
+      results.push(fhResult)
+      forwardHeadTriggered = true
     }
+  }
+
+  if (toggles.slouch) {
+    const r = slouchRule(deviations.torsoSlouch, thresholds.slouch)
+    if (r !== null) results.push(r)
+  }
+
+  if (toggles.headTilt) {
+    const r = headTiltRule(deviations.headTilt, thresholds.headTilt)
+    if (r !== null) results.push(r)
+  }
+
+  // Suppress tooClose when forwardHead already triggered — both use
+  // faceFrameRatio delta, and leaning forward naturally increases it.
+  if (toggles.tooClose && !forwardHeadTriggered) {
+    const r = tooCloseRule(deviations.faceFrameRatio, thresholds.tooClose)
+    if (r !== null) results.push(r)
+  }
+
+  if (toggles.shoulderAsymmetry) {
+    const r = shoulderAsymmetryRule(deviations.shoulderDiff, thresholds.shoulderAsymmetry)
+    if (r !== null) results.push(r)
   }
 
   return results

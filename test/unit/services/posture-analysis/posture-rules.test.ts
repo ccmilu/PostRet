@@ -327,11 +327,22 @@ describe('evaluateAllRules', () => {
     expect(result[0].rule).toBe('HEAD_TILT')
   })
 
-  it('should detect too close violation', () => {
+  it('should detect too close violation (forwardHead disabled to avoid mutual exclusion)', () => {
     const deviations = makeDeviations({ faceFrameRatio: 0.5 })
-    const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
+    const toggles: RuleToggles = { ...ALL_ENABLED, forwardHead: false }
+    const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, toggles)
     const tcViolations = result.filter(v => v.rule === 'TOO_CLOSE')
     expect(tcViolations).toHaveLength(1)
+  })
+
+  it('should suppress tooClose when forwardHead triggers (mutual exclusion)', () => {
+    // faceFrameRatio: 0.5 triggers both FH and TC, but FH suppresses TC
+    const deviations = makeDeviations({ faceFrameRatio: 0.5 })
+    const result = evaluateAllRules(deviations, DEFAULT_THRESHOLDS, ALL_ENABLED)
+    const fhViolations = result.filter(v => v.rule === 'FORWARD_HEAD')
+    const tcViolations = result.filter(v => v.rule === 'TOO_CLOSE')
+    expect(fhViolations).toHaveLength(1)
+    expect(tcViolations).toHaveLength(0)
   })
 
   it('should detect shoulder asymmetry violation', () => {
