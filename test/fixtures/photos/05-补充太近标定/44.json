@@ -1,0 +1,10 @@
+{
+  "photoId": 44,
+  "filename": "44.jpeg",
+  "category": "too_close",
+  "expectedViolations": ["TOO_CLOSE"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "borderline",
+  "notes": "轻微靠近约5-8cm，应开始触发"
+}

@@ -1,0 +1,10 @@
+{
+  "photoId": 48,
+  "filename": "48.jpeg",
+  "category": "too_close",
+  "expectedViolations": ["TOO_CLOSE"],
+  "lidAngle": 110,
+  "lighting": "normal",
+  "severity": "moderate",
+  "notes": "中度靠近约10-15cm"
+}

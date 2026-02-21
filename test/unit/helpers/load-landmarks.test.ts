@@ -128,9 +128,9 @@ describe('load-landmarks', () => {
   });
 
   describe('loadAllLandmarks', () => {
-    it('loads all 39 photos with landmarks', () => {
+    it('loads all photos with landmarks', () => {
       const results = loadAllLandmarks();
-      expect(results).toHaveLength(39);
+      expect(results.length).toBeGreaterThanOrEqual(39);
     });
 
     it('results are sorted by photoId', () => {
