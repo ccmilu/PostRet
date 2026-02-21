@@ -20,7 +20,7 @@ export interface UsePostureDetectionReturn {
   readonly lastAngles: PostureAngles | null
   readonly lastDeviations: AngleDeviations | null
   readonly error: string | null
-  readonly start: (calibration: CalibrationData, detection: DetectionSettings) => Promise<void>
+  readonly start: (calibration: CalibrationData, detection: DetectionSettings, deviceId?: string) => Promise<void>
   readonly stop: () => void
   /** Async version of stop() — waits for OS camera release before resolving. */
   readonly stopAsync: () => Promise<void>
@@ -28,6 +28,7 @@ export interface UsePostureDetectionReturn {
   readonly resume: () => Promise<void>
   readonly updateDetectionSettings: (detection: DetectionSettings) => void
   readonly updateCalibration: (calibration: CalibrationData) => void
+  readonly updateCamera: (deviceId: string) => void
 }
 
 function hasElectronAPI(): boolean {
@@ -38,10 +39,11 @@ function hasElectronAPI(): boolean {
   )
 }
 
-async function acquireCameraStream(): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-  })
+async function acquireCameraStream(deviceId?: string): Promise<MediaStream> {
+  const videoConstraints: MediaTrackConstraints = deviceId
+    ? { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+    : { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+  return navigator.mediaDevices.getUserMedia({ video: videoConstraints })
 }
 
 function createHiddenVideoElement(stream: MediaStream): HTMLVideoElement {
@@ -86,6 +88,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const detectionSettingsRef = useRef<DetectionSettings | null>(null)
+  const deviceIdRef = useRef<string | undefined>(undefined)
   const stateRef = useRef<DetectionState>('idle')
   const initializingRef = useRef(false)
   // Incremented on every stop() to signal in-flight start() to abort
@@ -160,7 +163,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   )
 
   const start = useCallback(
-    async (calibration: CalibrationData, detection: DetectionSettings): Promise<void> => {
+    async (calibration: CalibrationData, detection: DetectionSettings, deviceId?: string): Promise<void> => {
       // Prevent concurrent starts (use ref for synchronous check)
       if (initializingRef.current) {
         return
@@ -176,12 +179,13 @@ export function usePostureDetection(): UsePostureDetectionReturn {
       setState('initializing')
       setError(null)
       detectionSettingsRef.current = detection
+      deviceIdRef.current = deviceId
 
       try {
         // Step 1: Acquire camera
         let stream: MediaStream
         try {
-          stream = await acquireCameraStream()
+          stream = await acquireCameraStream(deviceId)
         } catch (err) {
           initializingRef.current = false
           setState('no-camera')
@@ -290,7 +294,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     // Re-acquire camera stream
     let stream: MediaStream
     try {
-      stream = await acquireCameraStream()
+      stream = await acquireCameraStream(deviceIdRef.current)
     } catch (err) {
       setState('no-camera')
       const message = err instanceof Error ? err.message : 'Cannot access camera'
@@ -335,6 +339,43 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   const updateCalibration = useCallback((calibration: CalibrationData) => {
     analyzerRef.current?.updateCalibration(calibration)
   }, [])
+
+  const updateCamera = useCallback(
+    (deviceId: string) => {
+      deviceIdRef.current = deviceId || undefined
+
+      // If currently detecting, restart camera with new device
+      if (stateRef.current === 'detecting') {
+        clearDetectionLoop()
+        releaseCameraResources()
+
+        // Re-acquire camera with new device and restart detection loop
+        acquireCameraStream(deviceIdRef.current)
+          .then((stream) => {
+            if (stateRef.current !== 'detecting' && stateRef.current !== 'idle') {
+              stopMediaStream(stream)
+              return
+            }
+            streamRef.current = stream
+            const video = createHiddenVideoElement(stream)
+            videoRef.current = video
+            return video.play()
+          })
+          .then(() => {
+            if (stateRef.current === 'detecting') {
+              const intervalMs = detectionSettingsRef.current?.intervalMs ?? 500
+              startDetectionLoop(intervalMs)
+            }
+          })
+          .catch((err) => {
+            setState('no-camera')
+            const message = err instanceof Error ? err.message : 'Cannot access camera'
+            setError(message)
+          })
+      }
+    },
+    [clearDetectionLoop, releaseCameraResources, startDetectionLoop],
+  )
 
   // Listen for pause/resume from main process (Tray menu)
   useEffect(() => {
@@ -387,5 +428,6 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     resume,
     updateDetectionSettings,
     updateCalibration,
+    updateCamera,
   }
 }

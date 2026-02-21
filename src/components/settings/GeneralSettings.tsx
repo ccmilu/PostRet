@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { Card, Toggle } from '@/components/shared'
 import { useSettings } from '@/hooks/useSettings'
+import { CameraSettings } from './CameraSettings'
 import type { UsePostureDetectionReturn, DetectionState } from '@/hooks/usePostureDetection'
 
 export interface GeneralSettingsProps {
@@ -95,6 +96,8 @@ export function GeneralSettings({ onStartCalibration, detection }: GeneralSettin
           </p>
         )}
       </Card>
+
+      <CameraSettings onCameraChange={detection?.updateCamera} />
 
       <Card title="启动">
         <Toggle
