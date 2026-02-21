@@ -16,8 +16,16 @@ vi.mock('@/components/settings/GeneralSettings', () => ({
   ),
 }))
 
+vi.mock('@/components/settings/DetectionSettings', () => ({
+  DetectionSettings: () => <div data-testid="detection-settings">detection panel</div>,
+}))
+
 vi.mock('@/components/settings/ReminderSettings', () => ({
   ReminderSettings: () => <div data-testid="reminder-settings">reminder panel</div>,
+}))
+
+vi.mock('@/components/settings/ScheduleSettings', () => ({
+  ScheduleSettings: () => <div data-testid="schedule-settings">schedule panel</div>,
 }))
 
 vi.mock('@/components/settings/DebugPanel', () => ({
@@ -55,12 +63,14 @@ describe('SettingsLayout', () => {
     delete (window as Record<string, unknown>).electronAPI
   })
 
-  it('should render sidebar with two tabs', () => {
+  it('should render sidebar with four tabs', () => {
     renderWithProvider(<SettingsLayout />)
 
     expect(screen.getByTestId('settings-sidebar')).toBeInTheDocument()
     expect(screen.getByTestId('settings-tab-general')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-tab-detection')).toBeInTheDocument()
     expect(screen.getByTestId('settings-tab-reminder')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-tab-schedule')).toBeInTheDocument()
   })
 
   it('should show GeneralSettings by default', () => {
@@ -111,6 +121,24 @@ describe('SettingsLayout', () => {
       'aria-selected',
       'true',
     )
+  })
+
+  it('should switch to DetectionSettings when detection tab is clicked', () => {
+    renderWithProvider(<SettingsLayout />)
+
+    fireEvent.click(screen.getByTestId('settings-tab-detection'))
+
+    expect(screen.getByTestId('detection-settings')).toBeInTheDocument()
+    expect(screen.queryByTestId('general-settings')).not.toBeInTheDocument()
+  })
+
+  it('should switch to ScheduleSettings when schedule tab is clicked', () => {
+    renderWithProvider(<SettingsLayout />)
+
+    fireEvent.click(screen.getByTestId('settings-tab-schedule'))
+
+    expect(screen.getByTestId('schedule-settings')).toBeInTheDocument()
+    expect(screen.queryByTestId('general-settings')).not.toBeInTheDocument()
   })
 
   it('should pass onStartCalibration to GeneralSettings', () => {

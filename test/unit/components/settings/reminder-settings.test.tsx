@@ -54,14 +54,13 @@ describe('ReminderSettings', () => {
     expect(screen.getByLabelText('系统通知')).toBeInTheDocument()
   })
 
-  it('should render sensitivity, delay, and fade-out sliders', async () => {
+  it('should render delay and fade-out sliders', async () => {
     renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
     })
 
-    expect(screen.getByLabelText('检测灵敏度')).toBeInTheDocument()
     expect(screen.getByLabelText('触发延迟')).toBeInTheDocument()
     expect(screen.getByLabelText('渐变消除时长')).toBeInTheDocument()
   })
@@ -105,31 +104,6 @@ describe('ReminderSettings', () => {
 
     const savedSettings = mockSetSettings.mock.calls[0][0]
     expect(savedSettings.reminder.sound).toBe(true)
-  })
-
-  it('should update sensitivity slider value', async () => {
-    const mockSetSettings = vi.fn().mockResolvedValue(undefined)
-    window.electronAPI = createMockElectronAPI({
-      setSettings: mockSetSettings,
-    })
-
-    renderWithProvider(<ReminderSettings />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
-    })
-
-    const sensitivitySlider = screen.getByLabelText(
-      '检测灵敏度',
-    ) as HTMLInputElement
-    fireEvent.change(sensitivitySlider, { target: { value: '0.8' } })
-
-    await waitFor(() => {
-      expect(mockSetSettings).toHaveBeenCalled()
-    })
-
-    const savedSettings = mockSetSettings.mock.calls[0][0]
-    expect(savedSettings.detection.sensitivity).toBe(0.8)
   })
 
   it('should update delay slider value', async () => {

@@ -8,7 +8,7 @@ function formatDelay(ms: number): string {
 }
 
 export function ReminderSettings() {
-  const { settings, loading, updateReminder, updateDetection } = useSettings()
+  const { settings, loading, updateReminder } = useSettings()
 
   const handleBlurChange = useCallback(
     (checked: boolean) => {
@@ -29,13 +29,6 @@ export function ReminderSettings() {
       updateReminder({ notification: checked })
     },
     [updateReminder],
-  )
-
-  const handleSensitivityChange = useCallback(
-    (value: number) => {
-      updateDetection({ sensitivity: value })
-    },
-    [updateDetection],
   )
 
   const handleDelayChange = useCallback(
@@ -61,7 +54,6 @@ export function ReminderSettings() {
   }
 
   const { blur, sound, notification, delayMs, fadeOutDurationMs } = settings.reminder
-  const { sensitivity } = settings.detection
 
   return (
     <div className="settings-panel" data-testid="reminder-settings">
@@ -88,15 +80,7 @@ export function ReminderSettings() {
         />
       </Card>
 
-      <Card title="灵敏度与延迟">
-        <Slider
-          label="检测灵敏度"
-          value={sensitivity}
-          onChange={handleSensitivityChange}
-          min={0}
-          max={1}
-          step={0.05}
-        />
+      <Card title="延迟设置">
         <Slider
           label="触发延迟"
           value={delayMs}

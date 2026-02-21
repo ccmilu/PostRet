@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react'
 import { GeneralSettings } from './GeneralSettings'
+import { DetectionSettings } from './DetectionSettings'
 import { ReminderSettings } from './ReminderSettings'
+import { ScheduleSettings } from './ScheduleSettings'
 import { DebugPanel } from './DebugPanel'
 import { useDebugMode } from '@/hooks/useDebugMode'
 import { useSettings } from '@/hooks/useSettings'
@@ -8,7 +10,7 @@ import type { UsePostureDetectionReturn } from '@/hooks/usePostureDetection'
 
 const APP_VERSION = 'v0.1.0'
 
-export type SettingsTab = 'general' | 'reminder' | 'debug'
+export type SettingsTab = 'general' | 'detection' | 'reminder' | 'schedule' | 'debug'
 
 export interface SettingsLayoutProps {
   readonly onStartCalibration?: () => void
@@ -17,7 +19,9 @@ export interface SettingsLayoutProps {
 
 const BASE_TABS: readonly { readonly id: SettingsTab; readonly label: string }[] = [
   { id: 'general', label: '通用' },
+  { id: 'detection', label: '检测' },
   { id: 'reminder', label: '提醒' },
+  { id: 'schedule', label: '计划' },
 ]
 
 export function SettingsLayout({ onStartCalibration, detection }: SettingsLayoutProps) {
@@ -86,7 +90,9 @@ export function SettingsLayout({ onStartCalibration, detection }: SettingsLayout
             detection={detection}
           />
         )}
+        {activeTab === 'detection' && <DetectionSettings />}
         {activeTab === 'reminder' && <ReminderSettings />}
+        {activeTab === 'schedule' && <ScheduleSettings />}
         {activeTab === 'debug' && detection && (
           <DebugPanel
             detection={detection}

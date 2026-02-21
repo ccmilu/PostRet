@@ -5,6 +5,11 @@ import { SettingsProvider } from '@/hooks/useSettings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 import type { IpcApi } from '@/types/ipc'
 
+// Mock CameraSettings to avoid navigator.mediaDevices dependency in jsdom
+vi.mock('@/components/settings/CameraSettings', () => ({
+  CameraSettings: () => <div data-testid="camera-settings">camera settings</div>,
+}))
+
 function renderWithProvider(ui: ReactNode) {
   return render(<SettingsProvider>{ui}</SettingsProvider>)
 }
