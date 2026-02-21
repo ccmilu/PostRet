@@ -166,6 +166,55 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 核心算法（angle-calculator, posture-rules, smoothing）采用 TDD：先写测试再写实现。
 每完成一个 Phase 的功能，对照该 Phase 的"测试 & 验收"清单逐条确认。
 
+## Phase 1.7 集成测试教训（重要）
+
+Phase 1.7 集成阶段暴露了 9 个手动一试即发现的 bug，尽管每个 Phase 都有测试通过。根因分析如下：
+
+### 问题 1：Mock 过度导致集成盲区
+
+每个模块的单元测试都 mock 了依赖方，只验证"如果依赖方按预期工作，我的代码也正确"。但**没有验证依赖方是否真的按预期工作**。
+
+典型案例：
+- `useCalibration` 测试 mock 了 `window.electronAPI.startCalibration()`，测试以为调用了 IPC 就算校准完成。但 IPC handler 另一端只做了 `setAppStatus` 就返回，没有真正采集 30 帧。
+- `hasLowVisibility` 在桌面摄像头场景下因包含不可见的臀部关键点，导致**每一帧都被丢弃**。单元测试中 mock 的 landmarks 都设了 visibility=1，掩盖了真实场景。
+
+**规则：关键链路必须有至少一条使用真实（或接近真实）数据的集成测试，不 mock 中间层。**
+
+### 问题 2：Teammate 各自为政，无人对端到端行为负责
+
+Phase 1.4 写了 CalibrationService（采集逻辑），Phase 1.6 写了校准 UI，Phase 1.7 做"集成"——但集成时用的是 mock 校准流程，没有把 CalibrationService 真正接入 UI。每个 Phase 的开发者只关注自己模块的测试通过。
+
+**规则：每个 Phase 完成后，必须有一条 Playwright E2E 测试在真实 Electron 环境下走通完整用户操作链路。Agent Browser 只能验证 renderer 层 UI，不能替代 Electron E2E。**
+
+### 问题 3：React Hook 状态隔离未被测试发现
+
+`useSettings()` 作为普通自定义 hook，每个组件调用都创建独立 state。`GeneralSettings` 更新了 enabled=false，但 `App` 的 settings 完全不知道。所有测试都只在单一组件中测试，没有测试跨组件状态共享。
+
+**规则：共享状态的 hook 必须使用 Context/Provider 模式，并测试多组件间状态同步。**
+
+### 问题 4：异步竞争条件
+
+`stop()` 无法取消正在 `await` 中的 `start()`。stop 执行后 start 的后续 await 继续，重新启动了检测。
+
+**规则：任何 async 初始化流程必须支持取消（generation counter / AbortController），并测试"初始化过程中被取消"的场景。**
+
+### 问题 5：环境差异被忽略
+
+- MediaPipe worldLandmarks 没有 visibility 属性，但代码写了 `lm.visibility ?? 0`（`?? 0` 生效 = 始终为 0）
+- CSP 阻断了 CDN WASM 加载，但开发时没有在真实 Electron 环境下验证
+- Agent Browser 无摄像头、无 electronAPI，走 mock 分支，掩盖了真实路径的问题
+
+**规则：每个 Phase 至少手动在真实 Electron 环境下做一次冒烟测试（启动应用、点击核心功能、确认无报错）。不能只依赖 Agent Browser 和 mock 测试。**
+
+### 强制检查清单（每个 Phase 完成后）
+
+- [ ] 是否有 Playwright E2E 测试在真实 Electron 环境下走通核心用户流程？
+- [ ] 关键链路是否有不 mock 中间层的集成测试？
+- [ ] 共享状态是否通过 Context/Provider 实现并测试了多组件同步？
+- [ ] async 流程是否支持取消并测试了取消场景？
+- [ ] 是否在真实 Electron 环境下手动冒烟测试过？
+- [ ] mock 数据是否反映了真实场景（如 landmarks visibility 的真实分布）？
+
 ## Agent Browser 规则
 
 **所有涉及 UI 或视觉效果的功能，必须先通过 Agent Browser 交互式验证，再编写自动化测试脚本。** Agent Browser 通过 `agent-browser` skill 调用，基于 Bash 命令行，主会话和 teammate 均可使用。（如果要用到，在创建teammate时应该明确说明用这个skill）
