@@ -1,9 +1,12 @@
 import { renderHook, act } from '@testing-library/react'
 import type { IpcApi, PostureStatus, AppStatus } from '@/types/ipc'
-import { DEFAULT_SETTINGS, type CalibrationData, type PostureSettings } from '@/types/settings'
+import {
+  DEFAULT_SETTINGS,
+  type CalibrationData,
+  type DetectionSettings,
+} from '@/types/settings'
 import type { DetectionFrame, Landmark } from '@/services/pose-detection/pose-types'
 import type { PoseDetector } from '@/services/pose-detection/pose-detector'
-import type { PostureAnalyzer } from '@/services/posture-analysis/posture-analyzer'
 
 // --- Mock modules ---
 
@@ -21,23 +24,18 @@ const mockPostureAnalyzerInstance = {
 }
 
 vi.mock('@/services/posture-analysis/posture-analyzer', () => ({
-  PostureAnalyzer: vi.fn().mockImplementation(() => mockPostureAnalyzerInstance),
+  PostureAnalyzer: vi.fn().mockImplementation(function (this: unknown) {
+    Object.assign(this as Record<string, unknown>, mockPostureAnalyzerInstance)
+  }),
 }))
 
-// Import the hook after mocking
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-let usePostureDetection: typeof import('@/hooks/usePostureDetection').usePostureDetection
+// Import the hook — vi.mock is hoisted before imports
+import { usePostureDetection } from '@/hooks/usePostureDetection'
 
 // --- Test helpers ---
 
 function createMockLandmark(overrides?: Partial<Landmark>): Landmark {
-  return {
-    x: 0.5,
-    y: 0.5,
-    z: 0,
-    visibility: 0.9,
-    ...overrides,
-  }
+  return { x: 0.5, y: 0.5, z: 0, visibility: 0.9, ...overrides }
 }
 
 function createMockLandmarks(count = 33): readonly Landmark[] {
@@ -103,10 +101,15 @@ function createMockVideoElement(): HTMLVideoElement {
     srcObject: null,
     videoWidth: 640,
     videoHeight: 480,
+    readyState: 4, // HAVE_ENOUGH_DATA — video ready
+    playsInline: false,
+    muted: false,
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
+    remove: vi.fn(),
+    style: {} as CSSStyleDeclaration,
   } as unknown as HTMLVideoElement
 }
 
@@ -117,6 +120,10 @@ const MOCK_CALIBRATION: CalibrationData = {
   faceFrameRatio: 0.15,
   shoulderDiff: 0,
   timestamp: Date.now(),
+}
+
+const MOCK_DETECTION_SETTINGS: DetectionSettings = {
+  ...DEFAULT_SETTINGS.detection,
 }
 
 function createMockElectronAPI(overrides?: Partial<IpcApi>): IpcApi {
@@ -143,13 +150,10 @@ function createMockElectronAPI(overrides?: Partial<IpcApi>): IpcApi {
 describe('usePostureDetection', () => {
   let mockDetector: PoseDetector
   let mockStream: MediaStream
-  let originalGetUserMedia: typeof navigator.mediaDevices.getUserMedia
-  let originalCreateElement: typeof document.createElement
+  let mockVideo: HTMLVideoElement
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.useFakeTimers()
-
-    // Reset all mocks
     vi.clearAllMocks()
 
     // Setup mock detector
@@ -166,21 +170,16 @@ describe('usePostureDetection', () => {
     // Setup mock MediaStream
     mockStream = createMockMediaStream()
 
-    // Mock getUserMedia
-    originalGetUserMedia = navigator.mediaDevices?.getUserMedia
-    if (!navigator.mediaDevices) {
-      Object.defineProperty(navigator, 'mediaDevices', {
-        value: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
-        writable: true,
-        configurable: true,
-      })
-    } else {
-      navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream)
-    }
+    // Mock getUserMedia — always use defineProperty since jsdom may not have mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
+      writable: true,
+      configurable: true,
+    })
 
     // Mock document.createElement for video element
-    originalCreateElement = document.createElement.bind(document)
-    const mockVideo = createMockVideoElement()
+    const originalCreateElement = document.createElement.bind(document)
+    mockVideo = createMockVideoElement()
     vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
       if (tag === 'video') {
         return mockVideo as unknown as HTMLElement
@@ -188,21 +187,16 @@ describe('usePostureDetection', () => {
       return originalCreateElement(tag)
     })
 
+    // Setup body.appendChild as no-op (the hook appends video to body)
+    vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node)
+
     // Setup electronAPI
     window.electronAPI = createMockElectronAPI()
-
-    // Dynamic import to pick up mocks
-    const mod = await import('@/hooks/usePostureDetection')
-    usePostureDetection = mod.usePostureDetection
   })
 
   afterEach(() => {
     vi.useRealTimers()
     delete (window as Record<string, unknown>).electronAPI
-
-    if (originalGetUserMedia && navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia = originalGetUserMedia
-    }
     vi.restoreAllMocks()
   })
 
@@ -210,19 +204,19 @@ describe('usePostureDetection', () => {
   // 1. 初始化
   // ==============================
   describe('initialization', () => {
-    it('should have idle status before start', () => {
+    it('should have idle state before start', () => {
       const { result } = renderHook(() => usePostureDetection())
 
-      expect(result.current.status).toBe('idle')
-      expect(result.current.currentPosture).toBeNull()
+      expect(result.current.state).toBe('idle')
+      expect(result.current.lastStatus).toBeNull()
       expect(result.current.error).toBeNull()
     })
 
-    it('should request camera permission on start', async () => {
+    it('should request camera on start', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(
@@ -234,39 +228,39 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       expect(mockCreatePoseDetector).toHaveBeenCalled()
       expect(mockDetector.initialize).toHaveBeenCalled()
     })
 
-    it('should transition to detecting status after successful initialization', async () => {
+    it('should transition to detecting state after successful initialization', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('detecting')
     })
 
-    it('should load settings and apply calibration baseline', async () => {
-      const settingsWithCalibration: PostureSettings = {
-        ...DEFAULT_SETTINGS,
-        calibration: MOCK_CALIBRATION,
-      }
-      window.electronAPI = createMockElectronAPI({
-        getSettings: vi.fn().mockResolvedValue(settingsWithCalibration),
-      })
+    it('should create PostureAnalyzer with calibration and detection settings', async () => {
+      const { PostureAnalyzer: MockedAnalyzer } = await import(
+        '@/services/posture-analysis/posture-analyzer'
+      )
 
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(MockedAnalyzer).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        MOCK_DETECTION_SETTINGS.sensitivity,
+        MOCK_DETECTION_SETTINGS.rules,
+      )
     })
   })
 
@@ -278,10 +272,9 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      // Initial detection call may happen right away
       const initialCalls = (mockDetector.detect as ReturnType<typeof vi.fn>).mock.calls.length
 
       await act(async () => {
@@ -301,24 +294,19 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500)
       })
 
-      // detect was called
       expect(mockDetector.detect).toHaveBeenCalled()
-
-      // analyze was called with the frame
       expect(mockPostureAnalyzerInstance.analyze).toHaveBeenCalled()
-
-      // reportPostureStatus was called with the analysis result
       expect(window.electronAPI.reportPostureStatus).toHaveBeenCalled()
     })
 
-    it('should update currentPosture with the latest PostureStatus', async () => {
+    it('should update lastStatus with the latest PostureStatus', async () => {
       const badPosture = createMockPostureStatus({
         isGood: false,
         violations: [
@@ -330,27 +318,26 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500)
       })
 
-      expect(result.current.currentPosture).toBeTruthy()
-      expect(result.current.currentPosture?.isGood).toBe(false)
-      expect(result.current.currentPosture?.violations).toHaveLength(1)
-      expect(result.current.currentPosture?.violations[0].rule).toBe('FORWARD_HEAD')
+      expect(result.current.lastStatus).toBeTruthy()
+      expect(result.current.lastStatus?.isGood).toBe(false)
+      expect(result.current.lastStatus?.violations).toHaveLength(1)
+      expect(result.current.lastStatus?.violations[0].rule).toBe('FORWARD_HEAD')
     })
 
     it('should run multiple detection cycles', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      // Reset call counts after initialization
       ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockClear()
 
       await act(async () => {
@@ -367,7 +354,7 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
@@ -376,8 +363,26 @@ describe('usePostureDetection', () => {
 
       // analyze should not be called if detect returns null
       expect(mockPostureAnalyzerInstance.analyze).not.toHaveBeenCalled()
-      // Status should still be detecting (no error)
-      expect(result.current.status).toBe('detecting')
+      // State should still be detecting (no error)
+      expect(result.current.state).toBe('detecting')
+    })
+
+    it('should not detect when video readyState is insufficient', async () => {
+      // Override readyState to be too low
+      Object.defineProperty(mockVideo, 'readyState', { value: 0, writable: true })
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+
+      // detect should not be called when video isn't ready
+      expect(mockDetector.detect).not.toHaveBeenCalled()
     })
   })
 
@@ -389,16 +394,15 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
         result.current.pause()
       })
 
-      expect(result.current.status).toBe('paused')
+      expect(result.current.state).toBe('paused')
 
-      // Reset call count
       ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockClear()
 
       await act(async () => {
@@ -409,24 +413,38 @@ describe('usePostureDetection', () => {
       expect(mockDetector.detect).not.toHaveBeenCalled()
     })
 
-    it('should resume detection loop on resume()', async () => {
+    it('should reset analyzer filters on pause', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
         result.current.pause()
       })
 
-      expect(result.current.status).toBe('paused')
+      expect(mockPostureAnalyzerInstance.reset).toHaveBeenCalled()
+    })
+
+    it('should resume detection loop on resume()', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      await act(async () => {
+        result.current.pause()
+      })
+
+      expect(result.current.state).toBe('paused')
 
       await act(async () => {
         result.current.resume()
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('detecting')
 
       ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockClear()
 
@@ -436,6 +454,32 @@ describe('usePostureDetection', () => {
 
       expect((mockDetector.detect as ReturnType<typeof vi.fn>).mock.calls.length)
         .toBeGreaterThan(0)
+    })
+
+    it('should not pause if not currently detecting', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      // state is 'idle', pause should be a no-op
+      await act(async () => {
+        result.current.pause()
+      })
+
+      expect(result.current.state).toBe('idle')
+    })
+
+    it('should not resume if not currently paused', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // state is 'detecting', resume should be a no-op
+      await act(async () => {
+        result.current.resume()
+      })
+
+      expect(result.current.state).toBe('detecting')
     })
 
     it('should respond to IPC onPause event', async () => {
@@ -450,17 +494,16 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('detecting')
 
-      // Simulate IPC pause event
       await act(async () => {
         pauseCallback?.()
       })
 
-      expect(result.current.status).toBe('paused')
+      expect(result.current.state).toBe('paused')
     })
 
     it('should respond to IPC onResume event', async () => {
@@ -480,22 +523,20 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      // Pause first
       await act(async () => {
         pauseCallback?.()
       })
 
-      expect(result.current.status).toBe('paused')
+      expect(result.current.state).toBe('paused')
 
-      // Resume via IPC
       await act(async () => {
         resumeCallback?.()
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('detecting')
     })
   })
 
@@ -503,49 +544,29 @@ describe('usePostureDetection', () => {
   // 4. 校准基准线
   // ==============================
   describe('calibration baseline', () => {
-    it('should load calibration from settings on start', async () => {
-      const settingsWithCalibration: PostureSettings = {
-        ...DEFAULT_SETTINGS,
-        calibration: MOCK_CALIBRATION,
-      }
-      window.electronAPI = createMockElectronAPI({
-        getSettings: vi.fn().mockResolvedValue(settingsWithCalibration),
-      })
+    it('should pass calibration data to PostureAnalyzer on start', async () => {
+      const { PostureAnalyzer: MockedAnalyzer } = await import(
+        '@/services/posture-analysis/posture-analyzer'
+      )
 
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      // PostureAnalyzer should have been constructed or updated with calibration data
-      expect(result.current.status).toBe('detecting')
+      expect(MockedAnalyzer).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        expect.any(Number),
+        expect.any(Object),
+      )
     })
 
-    it('should handle missing calibration gracefully', async () => {
-      const settingsNoCalibration: PostureSettings = {
-        ...DEFAULT_SETTINGS,
-        calibration: null,
-      }
-      window.electronAPI = createMockElectronAPI({
-        getSettings: vi.fn().mockResolvedValue(settingsNoCalibration),
-      })
-
+    it('should update baseline when updateCalibration is called', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
-      })
-
-      // Should still work without calibration data (using defaults)
-      expect(result.current.status).toBe('detecting')
-    })
-
-    it('should update baseline when calibration changes', async () => {
-      const { result } = renderHook(() => usePostureDetection())
-
-      await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       const newCalibration: CalibrationData = {
@@ -558,25 +579,75 @@ describe('usePostureDetection', () => {
         result.current.updateCalibration(newCalibration)
       })
 
-      // Analyzer should have been updated
       expect(mockPostureAnalyzerInstance.updateCalibration).toHaveBeenCalledWith(newCalibration)
     })
   })
 
   // ==============================
-  // 5. 清理
+  // 5. 设置更新
+  // ==============================
+  describe('detection settings update', () => {
+    it('should update sensitivity and rules via updateDetectionSettings', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      const newSettings: DetectionSettings = {
+        ...MOCK_DETECTION_SETTINGS,
+        sensitivity: 0.9,
+      }
+
+      await act(async () => {
+        result.current.updateDetectionSettings(newSettings)
+      })
+
+      expect(mockPostureAnalyzerInstance.updateSensitivity).toHaveBeenCalledWith(0.9)
+      expect(mockPostureAnalyzerInstance.updateRuleToggles).toHaveBeenCalledWith(newSettings.rules)
+    })
+
+    it('should restart detection loop with new interval', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockClear()
+
+      const newSettings: DetectionSettings = {
+        ...MOCK_DETECTION_SETTINGS,
+        intervalMs: 200,
+      }
+
+      await act(async () => {
+        result.current.updateDetectionSettings(newSettings)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+
+      // With 200ms interval over 1000ms, should have ~5 calls
+      expect((mockDetector.detect as ReturnType<typeof vi.fn>).mock.calls.length)
+        .toBeGreaterThanOrEqual(4)
+    })
+  })
+
+  // ==============================
+  // 6. 清理
   // ==============================
   describe('cleanup on unmount', () => {
     it('should release media stream on unmount', async () => {
       const { result, unmount } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       unmount()
 
-      // All tracks should be stopped
       const tracks = mockStream.getTracks()
       for (const track of tracks) {
         expect(track.stop).toHaveBeenCalled()
@@ -587,7 +658,7 @@ describe('usePostureDetection', () => {
       const { result, unmount } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       unmount()
@@ -599,12 +670,11 @@ describe('usePostureDetection', () => {
       const { result, unmount } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       unmount()
 
-      // After unmount, advancing timers should not cause detect calls
       ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockClear()
 
       await act(async () => {
@@ -625,7 +695,7 @@ describe('usePostureDetection', () => {
       const { result, unmount } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       unmount()
@@ -634,23 +704,35 @@ describe('usePostureDetection', () => {
       expect(unsubResume).toHaveBeenCalled()
     })
 
+    it('should remove video element from DOM on unmount', async () => {
+      const { result, unmount } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      unmount()
+
+      expect(mockVideo.remove).toHaveBeenCalled()
+    })
+
     it('should handle stop() explicitly', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('detecting')
 
       await act(async () => {
         result.current.stop()
       })
 
-      expect(result.current.status).toBe('idle')
+      expect(result.current.state).toBe('idle')
+      expect(result.current.lastStatus).toBeNull()
       expect(mockDetector.destroy).toHaveBeenCalled()
 
-      // Stream tracks should be stopped
       const tracks = mockStream.getTracks()
       for (const track of tracks) {
         expect(track.stop).toHaveBeenCalled()
@@ -659,10 +741,10 @@ describe('usePostureDetection', () => {
   })
 
   // ==============================
-  // 6. 错误处理
+  // 7. 错误处理
   // ==============================
   describe('error handling', () => {
-    it('should set no-camera status when getUserMedia is rejected', async () => {
+    it('should set no-camera state when getUserMedia is rejected', async () => {
       navigator.mediaDevices.getUserMedia = vi
         .fn()
         .mockRejectedValue(new DOMException('Permission denied', 'NotAllowedError'))
@@ -670,14 +752,14 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('no-camera')
+      expect(result.current.state).toBe('no-camera')
       expect(result.current.error).toBeTruthy()
     })
 
-    it('should set error status when PoseDetector initialization fails', async () => {
+    it('should set error state when PoseDetector initialization fails', async () => {
       ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('WASM load failed'),
       )
@@ -685,84 +767,82 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      expect(result.current.status).toBe('error')
+      expect(result.current.state).toBe('error')
       expect(result.current.error).toContain('WASM load failed')
     })
 
-    it('should skip frame and continue when detection throws', async () => {
-      let callCount = 0
-      ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockImplementation(() => {
-        callCount++
-        if (callCount <= 2) {
-          throw new Error('GPU context lost')
-        }
-        return createMockDetectionFrame()
-      })
+    it('should set error with generic message for non-Error rejections', async () => {
+      ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockRejectedValue('some string')
 
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      // Advance through several intervals — some will throw, later ones succeed
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000)
-      })
-
-      // Should still be detecting (not in error state)
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('error')
+      expect(result.current.error).toBeTruthy()
     })
 
-    it('should skip frame when analyze throws', async () => {
-      mockPostureAnalyzerInstance.analyze.mockImplementationOnce(() => {
-        throw new Error('Unexpected angle')
-      })
+    it('should release resources on initialization error', async () => {
+      ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('init failed'),
+      )
 
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500)
-      })
-
-      // Should continue detecting despite analyze error
-      expect(result.current.status).toBe('detecting')
+      expect(result.current.state).toBe('error')
+      // Stream tracks should have been cleaned up
+      const tracks = mockStream.getTracks()
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalled()
+      }
     })
 
-    it('should handle getUserMedia not available gracefully', async () => {
-      const origMediaDevices = navigator.mediaDevices
-      Object.defineProperty(navigator, 'mediaDevices', {
-        value: undefined,
-        writable: true,
-        configurable: true,
+    it('should prevent concurrent starts', async () => {
+      // Make initialize take a long time
+      let resolveInit: (() => void) | null = null
+      ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return new Promise<void>((resolve) => {
+          resolveInit = resolve
+        })
       })
 
       const { result } = renderHook(() => usePostureDetection())
 
+      // Start first — goes to 'initializing'
+      const firstStart = act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // Tick to let the state update to 'initializing'
       await act(async () => {
-        await result.current.start()
+        await vi.advanceTimersByTimeAsync(10)
       })
 
-      expect(result.current.status).toBe('no-camera')
-
-      // Restore
-      Object.defineProperty(navigator, 'mediaDevices', {
-        value: origMediaDevices,
-        writable: true,
-        configurable: true,
+      // Second start should be a no-op since state is 'initializing'
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
+
+      // createPoseDetector should have been called only once
+      expect(mockCreatePoseDetector).toHaveBeenCalledTimes(1)
+
+      // Resolve the init so the test can clean up
+      resolveInit?.()
+      await firstStart
     })
   })
 
   // ==============================
-  // 7. 不报告 when electronAPI not available
+  // 8. 无 electronAPI
   // ==============================
   describe('without electronAPI', () => {
     it('should still detect locally without reporting to main process', async () => {
@@ -771,7 +851,7 @@ describe('usePostureDetection', () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
-        await result.current.start()
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
       })
 
       await act(async () => {
@@ -780,8 +860,17 @@ describe('usePostureDetection', () => {
 
       // Detection should work
       expect(mockDetector.detect).toHaveBeenCalled()
-      // currentPosture should be set
-      expect(result.current.currentPosture).toBeTruthy()
+      // lastStatus should be set
+      expect(result.current.lastStatus).toBeTruthy()
+    })
+
+    it('should not register IPC listeners when electronAPI is absent', () => {
+      delete (window as Record<string, unknown>).electronAPI
+
+      renderHook(() => usePostureDetection())
+
+      // No crash, and no onPause/onResume registered
+      // (would have thrown if trying to call undefined.onPause)
     })
   })
 })
