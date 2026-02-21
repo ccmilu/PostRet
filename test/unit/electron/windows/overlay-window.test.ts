@@ -10,7 +10,11 @@ const { mockRelease, MockBrowserWindow, createMockBrowserWindow } = vi.hoisted((
       destroy: vi.fn(),
       setOpacity: vi.fn(),
       getOpacity: vi.fn().mockReturnValue(1),
+      setAlwaysOnTop: vi.fn(),
       setIgnoreMouseEvents: vi.fn(),
+      setPosition: vi.fn(),
+      setSize: vi.fn(),
+      setBounds: vi.fn(),
       loadURL: vi.fn().mockResolvedValue(undefined),
       isDestroyed: vi.fn().mockReturnValue(false),
       isVisible: vi.fn().mockReturnValue(false),
@@ -147,12 +151,15 @@ describe('OverlayWindow', () => {
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.transparent).toBe(true)
       expect(config.frame).toBe(false)
-      expect(config.alwaysOnTop).toBe(true)
+      expect(config.enableLargerThanScreen).toBe(true)
       expect(config.skipTaskbar).toBe(true)
       expect(config.hasShadow).toBe(false)
       expect(config.focusable).toBe(false)
       expect(config.resizable).toBe(false)
       expect(config.movable).toBe(false)
+      // alwaysOnTop with 'screen-saver' level is set via setAlwaysOnTop() after construction
+      const mockInstance = MockBrowserWindow.mock.results[0].value
+      expect(mockInstance.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver')
     })
 
     it('sets window to primary display bounds', () => {

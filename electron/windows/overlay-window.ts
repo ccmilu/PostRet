@@ -50,6 +50,13 @@ export function parseDarwinMajorVersion(releaseString: string): number | null {
   return Number.isFinite(major) ? major : null
 }
 
+// NOTE: Electron's built-in vibrancy uses NSVisualEffectView, which provides
+// a standard Gaussian blur effect. macOS 26 Tahoe introduced "Liquid Glass"
+// (NSGlassEffectView — a private API with refraction/reflection effects),
+// but Electron does not expose it. To get true Liquid Glass, the
+// `electron-liquid-glass` native module would be needed. Current approach
+// uses NSVisualEffectView as a cross-version fallback that works on
+// macOS 13+ through 26+. See: https://github.com/Meridius-Labs/electron-liquid-glass
 function selectVibrancy(support: 'modern' | 'legacy' | 'unsupported'): VibrancyType | undefined {
   switch (support) {
     case 'modern':
@@ -139,7 +146,6 @@ export class OverlayWindow {
       height: bounds.height,
       transparent: true,
       frame: false,
-      alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,
       focusable: false,
@@ -149,6 +155,7 @@ export class OverlayWindow {
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
+      enableLargerThanScreen: true,
       ...(vibrancy ? { vibrancy, visualEffectState: 'active' } : {}),
       webPreferences: {
         contextIsolation: true,
@@ -157,6 +164,9 @@ export class OverlayWindow {
       },
     })
 
+    // 'screen-saver' level sits above menubar/Dock, ensuring full-screen coverage.
+    // Must be set after construction (constructor 'alwaysOnTop' doesn't accept level).
+    this.window.setAlwaysOnTop(true, 'screen-saver')
     this.window.setIgnoreMouseEvents(true)
 
     // Body must have content for vibrancy to render on;
@@ -167,6 +177,10 @@ export class OverlayWindow {
 
     this.window.once('ready-to-show', () => {
       this.window?.show()
+      // Force position after show — macOS pushes windows into workArea on creation;
+      // re-applying display.bounds after show overrides that constraint.
+      this.window?.setPosition(bounds.x, bounds.y, false)
+      this.window?.setSize(bounds.width, bounds.height, false)
     })
 
     this.window.on('closed', () => {
