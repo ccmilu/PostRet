@@ -924,6 +924,44 @@ describe('usePostureDetection', () => {
         expect(track.stop).toHaveBeenCalled()
       }
     })
+
+    it('stopAsync() should call stop() and wait for camera release delay', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      expect(result.current.state).toBe('detecting')
+
+      // stopAsync returns a promise that resolves after the delay
+      await act(async () => {
+        const promise = result.current.stopAsync()
+        // Advance past the 300ms camera release delay
+        await vi.advanceTimersByTimeAsync(300)
+        await promise
+      })
+
+      expect(result.current.state).toBe('idle')
+      expect(mockDetector.destroy).toHaveBeenCalled()
+      const tracks = mockStream.getTracks()
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalled()
+      }
+    })
+
+    it('stopAsync() should resolve immediately when no stream was active', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      // state is 'idle', no stream active
+      await act(async () => {
+        const promise = result.current.stopAsync()
+        // Should not need to advance timers — no delay when no stream
+        await promise
+      })
+
+      expect(result.current.state).toBe('idle')
+    })
   })
 
   // ==============================

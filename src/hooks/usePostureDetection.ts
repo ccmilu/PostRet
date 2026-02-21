@@ -22,6 +22,8 @@ export interface UsePostureDetectionReturn {
   readonly error: string | null
   readonly start: (calibration: CalibrationData, detection: DetectionSettings) => Promise<void>
   readonly stop: () => void
+  /** Async version of stop() — waits for OS camera release before resolving. */
+  readonly stopAsync: () => Promise<void>
   readonly pause: () => void
   readonly resume: () => Promise<void>
   readonly updateDetectionSettings: (detection: DetectionSettings) => void
@@ -258,6 +260,18 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     setError(null)
   }, [releaseResources])
 
+  // Delay (ms) to allow the OS to fully release the camera device after
+  // track.stop(). macOS typically needs ~200-300ms; 300ms provides margin.
+  const CAMERA_RELEASE_DELAY_MS = 300
+
+  const stopAsync = useCallback(async (): Promise<void> => {
+    const hadStream = streamRef.current !== null
+    stop()
+    if (hadStream) {
+      await new Promise((resolve) => setTimeout(resolve, CAMERA_RELEASE_DELAY_MS))
+    }
+  }, [stop])
+
   const pause = useCallback(() => {
     if (stateRef.current !== 'detecting') {
       return
@@ -368,6 +382,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     error,
     start,
     stop,
+    stopAsync,
     pause,
     resume,
     updateDetectionSettings,

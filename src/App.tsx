@@ -66,8 +66,10 @@ export function App() {
     }
   }, [settings.calibration, detection.state, detection.updateCalibration])
 
-  const handleStartCalibration = useCallback(() => {
-    detection.stop()
+  const handleStartCalibration = useCallback(async () => {
+    // Wait for camera release before navigating so CalibrationPage
+    // can acquire the camera without a device-busy race condition.
+    await detection.stopAsync()
     setPage('calibration')
   }, [detection])
 

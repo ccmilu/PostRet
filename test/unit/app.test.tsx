@@ -14,6 +14,7 @@ const mockDetection: UsePostureDetectionReturn = {
   error: null,
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn(),
+  stopAsync: vi.fn().mockResolvedValue(undefined),
   pause: vi.fn(),
   resume: vi.fn(),
   updateDetectionSettings: vi.fn(),
@@ -289,13 +290,13 @@ describe('App', () => {
   })
 
   describe('calibration flow', () => {
-    it('should stop detection when navigating to calibration', async () => {
+    it('should call stopAsync (not sync stop) when navigating to calibration', async () => {
       const user = userEvent.setup()
       render(<App />)
 
       await user.click(screen.getByTestId('start-calibration-btn'))
 
-      expect(mockDetection.stop).toHaveBeenCalled()
+      expect(mockDetection.stopAsync).toHaveBeenCalled()
     })
 
     it('should call reloadSettings when calibration completes', async () => {
