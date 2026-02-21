@@ -2,7 +2,7 @@ import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { DetectionFrame, Landmark } from '@/services/pose-detection/pose-types'
 import type { PostureStatus } from '@/types/ipc'
 import type { CalibrationData, RuleToggles } from '@/types/settings'
-import type { AngleDeviations } from './posture-types'
+import type { AngleDeviations, PostureAngles } from './posture-types'
 import { extractPostureAngles } from './angle-calculator'
 import { getScaledThresholds } from './thresholds'
 import { evaluateAllRules } from './posture-rules'
@@ -85,6 +85,12 @@ function hasLowVisibility(worldLandmarks: readonly Landmark[]): boolean {
   return false
 }
 
+export interface AnalyzeResult {
+  readonly status: PostureStatus
+  readonly angles: PostureAngles
+  readonly deviations: AngleDeviations
+}
+
 export class PostureAnalyzer {
   private calibration: CalibrationData
   private sensitivity: number
@@ -102,16 +108,34 @@ export class PostureAnalyzer {
     this.filters = createFilters()
   }
 
-  analyze(frame: DetectionFrame): PostureStatus {
+  /**
+   * Analyze a detection frame and return posture status, smoothed angles,
+   * and deviations from baseline. The legacy `analyze` method is kept for
+   * backward compatibility; prefer `analyzeDetailed` for richer output.
+   */
+  analyzeDetailed(frame: DetectionFrame): AnalyzeResult {
     const confidence = computeConfidence(frame.worldLandmarks)
 
     // Step 1: Visibility filter
     if (hasLowVisibility(frame.worldLandmarks)) {
+      const zeroAngles: PostureAngles = {
+        headForwardAngle: 0,
+        torsoAngle: 0,
+        headTiltAngle: 0,
+        faceFrameRatio: 0,
+        shoulderDiff: 0,
+      }
+      const zeroDeviations: AngleDeviations = {
+        headForward: 0,
+        torsoSlouch: 0,
+        headTilt: 0,
+        faceFrameRatio: 0,
+        shoulderDiff: 0,
+      }
       return {
-        isGood: true,
-        violations: [],
-        confidence,
-        timestamp: frame.timestamp,
+        status: { isGood: true, violations: [], confidence, timestamp: frame.timestamp },
+        angles: zeroAngles,
+        deviations: zeroDeviations,
       }
     }
 
@@ -135,6 +159,14 @@ export class PostureAnalyzer {
       this.filters.shoulderEma.update(rawAngles.shoulderDiff)
     )
 
+    const smoothedAngles: PostureAngles = {
+      headForwardAngle: smoothedHeadForward,
+      torsoAngle: smoothedTorso,
+      headTiltAngle: smoothedHeadTilt,
+      faceFrameRatio: smoothedFaceRatio,
+      shoulderDiff: smoothedShoulderDiff,
+    }
+
     // Step 4: Baseline comparison
     const deviations: AngleDeviations = {
       headForward: smoothedHeadForward - this.calibration.headForwardAngle,
@@ -149,12 +181,18 @@ export class PostureAnalyzer {
     const violations = evaluateAllRules(deviations, scaledThresholds, this.ruleToggles)
 
     // Step 6: Output
-    return {
+    const status: PostureStatus = {
       isGood: violations.length === 0,
       violations,
       confidence,
       timestamp: frame.timestamp,
     }
+
+    return { status, angles: smoothedAngles, deviations }
+  }
+
+  analyze(frame: DetectionFrame): PostureStatus {
+    return this.analyzeDetailed(frame).status
   }
 
   updateCalibration(calibration: CalibrationData): void {

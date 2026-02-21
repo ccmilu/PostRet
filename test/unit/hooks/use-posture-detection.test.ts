@@ -17,6 +17,7 @@ vi.mock('@/services/pose-detection/pose-detector', () => ({
 
 const mockPostureAnalyzerInstance = {
   analyze: vi.fn(),
+  analyzeDetailed: vi.fn(),
   updateCalibration: vi.fn(),
   updateSensitivity: vi.fn(),
   updateRuleToggles: vi.fn(),
@@ -162,6 +163,23 @@ describe('usePostureDetection', () => {
 
     // Setup mock PostureAnalyzer
     mockPostureAnalyzerInstance.analyze.mockReturnValue(createMockPostureStatus())
+    mockPostureAnalyzerInstance.analyzeDetailed.mockReturnValue({
+      status: createMockPostureStatus(),
+      angles: {
+        headForwardAngle: 10,
+        torsoAngle: 5,
+        headTiltAngle: 0,
+        faceFrameRatio: 0.15,
+        shoulderDiff: 0,
+      },
+      deviations: {
+        headForward: 0,
+        torsoSlouch: 0,
+        headTilt: 0,
+        faceFrameRatio: 0.15,
+        shoulderDiff: 0,
+      },
+    })
     mockPostureAnalyzerInstance.updateCalibration.mockReturnValue(undefined)
     mockPostureAnalyzerInstance.updateSensitivity.mockReturnValue(undefined)
     mockPostureAnalyzerInstance.updateRuleToggles.mockReturnValue(undefined)
@@ -285,11 +303,27 @@ describe('usePostureDetection', () => {
         .toBeGreaterThan(initialCalls)
     })
 
-    it('should call detect → analyze → reportPostureStatus chain', async () => {
+    it('should call detect → analyzeDetailed → reportPostureStatus chain', async () => {
       const mockFrame = createMockDetectionFrame()
       const mockStatus = createMockPostureStatus({ isGood: false })
       ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockReturnValue(mockFrame)
-      mockPostureAnalyzerInstance.analyze.mockReturnValue(mockStatus)
+      mockPostureAnalyzerInstance.analyzeDetailed.mockReturnValue({
+        status: mockStatus,
+        angles: {
+          headForwardAngle: 10,
+          torsoAngle: 5,
+          headTiltAngle: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+        deviations: {
+          headForward: 0,
+          torsoSlouch: 0,
+          headTilt: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+      })
 
       const { result } = renderHook(() => usePostureDetection())
 
@@ -302,7 +336,7 @@ describe('usePostureDetection', () => {
       })
 
       expect(mockDetector.detect).toHaveBeenCalled()
-      expect(mockPostureAnalyzerInstance.analyze).toHaveBeenCalled()
+      expect(mockPostureAnalyzerInstance.analyzeDetailed).toHaveBeenCalled()
       expect(window.electronAPI.reportPostureStatus).toHaveBeenCalled()
     })
 
@@ -313,7 +347,23 @@ describe('usePostureDetection', () => {
           { rule: 'FORWARD_HEAD', severity: 0.7, message: 'Head too far forward' },
         ],
       })
-      mockPostureAnalyzerInstance.analyze.mockReturnValue(badPosture)
+      mockPostureAnalyzerInstance.analyzeDetailed.mockReturnValue({
+        status: badPosture,
+        angles: {
+          headForwardAngle: 25,
+          torsoAngle: 5,
+          headTiltAngle: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+        deviations: {
+          headForward: 15,
+          torsoSlouch: 0,
+          headTilt: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+      })
 
       const { result } = renderHook(() => usePostureDetection())
 
@@ -361,8 +411,8 @@ describe('usePostureDetection', () => {
         await vi.advanceTimersByTimeAsync(500)
       })
 
-      // analyze should not be called if detect returns null
-      expect(mockPostureAnalyzerInstance.analyze).not.toHaveBeenCalled()
+      // analyzeDetailed should not be called if detect returns null
+      expect(mockPostureAnalyzerInstance.analyzeDetailed).not.toHaveBeenCalled()
       // State should still be detecting (no error)
       expect(result.current.state).toBe('detecting')
     })

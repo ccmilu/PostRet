@@ -13,7 +13,9 @@ export function App() {
   const { settings, loading, reloadSettings } = useSettings()
   const detection = usePostureDetection()
 
-  // Auto-start detection when calibration data is available
+  // Auto-start detection when calibration data is available.
+  // Also retry when state is 'error' (e.g. model load failure) so that
+  // a settings change or re-calibration can recover automatically.
   useEffect(() => {
     if (loading) {
       return
@@ -24,7 +26,7 @@ export function App() {
       return
     }
 
-    if (detection.state !== 'idle') {
+    if (detection.state !== 'idle' && detection.state !== 'error') {
       return
     }
 
@@ -54,14 +56,21 @@ export function App() {
     setPage('calibration')
   }, [detection])
 
-  const handleCalibrationComplete = useCallback(() => {
+  const handleCalibrationComplete = useCallback(async () => {
     setPage('settings')
-    reloadSettings()
+    // Await reloadSettings so that the auto-start useEffect sees the
+    // freshly-saved calibration data on the very next render.
+    await reloadSettings()
   }, [reloadSettings])
 
   if (page === 'calibration') {
     return <CalibrationPage onComplete={handleCalibrationComplete} />
   }
 
-  return <SettingsLayout onStartCalibration={handleStartCalibration} />
+  return (
+    <SettingsLayout
+      onStartCalibration={handleStartCalibration}
+      detection={detection}
+    />
+  )
 }

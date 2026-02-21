@@ -1,11 +1,13 @@
 import { useState, useCallback } from 'react'
 import { GeneralSettings } from './GeneralSettings'
 import { ReminderSettings } from './ReminderSettings'
+import type { UsePostureDetectionReturn } from '@/hooks/usePostureDetection'
 
 export type SettingsTab = 'general' | 'reminder'
 
 export interface SettingsLayoutProps {
   readonly onStartCalibration?: () => void
+  readonly detection?: UsePostureDetectionReturn
 }
 
 const TABS: readonly { readonly id: SettingsTab; readonly label: string }[] = [
@@ -13,7 +15,7 @@ const TABS: readonly { readonly id: SettingsTab; readonly label: string }[] = [
   { id: 'reminder', label: '提醒' },
 ]
 
-export function SettingsLayout({ onStartCalibration }: SettingsLayoutProps) {
+export function SettingsLayout({ onStartCalibration, detection }: SettingsLayoutProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
 
   const handleTabClick = useCallback((tab: SettingsTab) => {
@@ -41,7 +43,10 @@ export function SettingsLayout({ onStartCalibration }: SettingsLayoutProps) {
       </nav>
       <main className="settings-content" data-testid="settings-content" role="tabpanel">
         {activeTab === 'general' && (
-          <GeneralSettings onStartCalibration={onStartCalibration} />
+          <GeneralSettings
+            onStartCalibration={onStartCalibration}
+            detection={detection}
+          />
         )}
         {activeTab === 'reminder' && <ReminderSettings />}
       </main>

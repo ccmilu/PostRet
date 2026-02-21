@@ -9,6 +9,8 @@ import type { UseSettingsReturn } from '@/hooks/useSettings'
 const mockDetection: UsePostureDetectionReturn = {
   state: 'idle' as DetectionState,
   lastStatus: null,
+  lastAngles: null,
+  lastDeviations: null,
   error: null,
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn(),
@@ -80,6 +82,8 @@ describe('App', () => {
     vi.clearAllMocks()
     mockDetection.state = 'idle'
     mockDetection.lastStatus = null
+    mockDetection.lastAngles = null
+    mockDetection.lastDeviations = null
     mockDetection.error = null
     mockSettings = { ...DEFAULT_SETTINGS }
     mockLoading = false
@@ -152,6 +156,19 @@ describe('App', () => {
       render(<App />)
 
       expect(mockDetection.start).not.toHaveBeenCalled()
+    })
+
+    it('should retry detection when state is error (auto-recovery)', () => {
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+      mockLoading = false
+      mockDetection.state = 'error'
+
+      render(<App />)
+
+      expect(mockDetection.start).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        mockSettings.detection,
+      )
     })
 
     it('should not start detection when detection is disabled', () => {

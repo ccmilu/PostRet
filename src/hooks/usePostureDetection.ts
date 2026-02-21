@@ -4,6 +4,7 @@ import { createPoseDetector } from '@/services/pose-detection/pose-detector'
 import { PostureAnalyzer } from '@/services/posture-analysis/posture-analyzer'
 import type { PostureStatus } from '@/types/ipc'
 import type { CalibrationData, DetectionSettings } from '@/types/settings'
+import type { PostureAngles, AngleDeviations } from '@/services/posture-analysis/posture-types'
 
 export type DetectionState =
   | 'idle'
@@ -16,6 +17,8 @@ export type DetectionState =
 export interface UsePostureDetectionReturn {
   readonly state: DetectionState
   readonly lastStatus: PostureStatus | null
+  readonly lastAngles: PostureAngles | null
+  readonly lastDeviations: AngleDeviations | null
   readonly error: string | null
   readonly start: (calibration: CalibrationData, detection: DetectionSettings) => Promise<void>
   readonly stop: () => void
@@ -71,6 +74,8 @@ function removeVideoElement(video: HTMLVideoElement | null): void {
 export function usePostureDetection(): UsePostureDetectionReturn {
   const [state, setState] = useState<DetectionState>('idle')
   const [lastStatus, setLastStatus] = useState<PostureStatus | null>(null)
+  const [lastAngles, setLastAngles] = useState<PostureAngles | null>(null)
+  const [lastDeviations, setLastDeviations] = useState<AngleDeviations | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const detectorRef = useRef<PoseDetector | null>(null)
@@ -126,11 +131,13 @@ export function usePostureDetection(): UsePostureDetectionReturn {
       return
     }
 
-    const status = analyzer.analyze(frame)
-    setLastStatus(status)
+    const result = analyzer.analyzeDetailed(frame)
+    setLastStatus(result.status)
+    setLastAngles(result.angles)
+    setLastDeviations(result.deviations)
 
     if (hasElectronAPI()) {
-      window.electronAPI.reportPostureStatus(status).catch((err) => {
+      window.electronAPI.reportPostureStatus(result.status).catch((err) => {
         console.warn('Failed to report posture status:', err)
       })
     }
@@ -214,6 +221,8 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     releaseResources()
     setState('idle')
     setLastStatus(null)
+    setLastAngles(null)
+    setLastDeviations(null)
     setError(null)
   }, [releaseResources])
 
@@ -295,6 +304,8 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   return {
     state,
     lastStatus,
+    lastAngles,
+    lastDeviations,
     error,
     start,
     stop,
