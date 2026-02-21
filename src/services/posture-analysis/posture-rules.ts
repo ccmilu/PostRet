@@ -95,8 +95,11 @@ export function evaluateAllRules(
 ): readonly PostureViolation[] {
   const results: PostureViolation[] = []
 
-  // forwardHead now covers both "leaning forward" and "too close" scenarios.
-  // The tooClose toggle is treated as an alias for forwardHead.
+  // forwardHead and tooClose share the same physical signal (face approaching camera).
+  // The rule label depends on which toggle(s) are enabled:
+  //   - forwardHead on → FORWARD_HEAD
+  //   - tooClose on (forwardHead off) → TOO_CLOSE
+  //   - both off → skip
   if (toggles.forwardHead || toggles.tooClose) {
     const fhResult = forwardHeadRule(
       {
@@ -108,7 +111,10 @@ export function evaluateAllRules(
       thresholds.forwardHeadFFR,
       thresholds.forwardHeadNTE,
     )
-    if (fhResult !== null) results.push(fhResult)
+    if (fhResult !== null) {
+      const rule = toggles.forwardHead ? 'FORWARD_HEAD' as const : 'TOO_CLOSE' as const
+      results.push({ ...fhResult, rule })
+    }
   }
 
   if (toggles.slouch) {
