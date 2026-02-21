@@ -1,9 +1,16 @@
-import { app } from 'electron'
+import { app, Notification } from 'electron'
+import { exec } from 'child_process'
 import { TrayManager } from './tray/tray-manager'
 import { SettingsWindow } from './windows/settings-window'
+import { OverlayWindow } from './windows/overlay-window'
+import { BlurController } from './blur/blur-controller'
 import { ConfigStore } from './store/config-store'
 import { registerIpcHandlers } from './ipc/ipc-handlers'
+import { ReminderManager } from '../src/services/reminder/reminder-manager'
+import { createNotificationSender } from '../src/services/reminder/notification-sender'
+import { createSoundPlayer } from '../src/services/reminder/sound-player'
 import type { AppStatus } from '../src/types/ipc'
+import type { ReminderConfig } from '../src/services/reminder/reminder-types'
 
 const isSingleInstance = app.requestSingleInstanceLock()
 if (!isSingleInstance) {
@@ -13,6 +20,9 @@ if (!isSingleInstance) {
 let trayManager: TrayManager | null = null
 let settingsWindow: SettingsWindow | null = null
 let configStore: ConfigStore | null = null
+let overlayWindow: OverlayWindow | null = null
+let blurController: BlurController | null = null
+let reminderManager: ReminderManager | null = null
 let appStatus: AppStatus = 'paused'
 
 function getAppStatus(): AppStatus {
@@ -25,6 +35,17 @@ function setAppStatus(status: AppStatus): void {
   settingsWindow?.sendStatusChange(status)
 }
 
+function buildReminderConfig(store: ConfigStore): ReminderConfig {
+  const settings = store.getSettings()
+  return {
+    blur: settings.reminder.blur,
+    notification: settings.reminder.notification,
+    sound: settings.reminder.sound,
+    delayMs: settings.reminder.delayMs,
+    fadeOutDurationMs: 1500,
+  }
+}
+
 app.whenReady().then(() => {
   // macOS: hide from Dock, show only in menu bar
   app.dock?.hide()
@@ -32,6 +53,25 @@ app.whenReady().then(() => {
   configStore = new ConfigStore()
 
   settingsWindow = new SettingsWindow()
+
+  // Phase 1.5: Blur overlay
+  overlayWindow = new OverlayWindow()
+  blurController = new BlurController({ overlayWindow })
+
+  // Phase 1.5: Notification and sound
+  const notificationSender = createNotificationSender({
+    createNotification: (opts) => new Notification(opts),
+  })
+
+  const soundPlayer = createSoundPlayer({ exec })
+
+  // Phase 1.5: Reminder manager
+  reminderManager = new ReminderManager(buildReminderConfig(configStore), {
+    onBlurActivate: () => blurController?.activate(),
+    onBlurDeactivate: () => blurController?.deactivate(),
+    onNotify: (violations) => notificationSender.send(violations),
+    onSound: () => soundPlayer.playAlertSound(),
+  })
 
   trayManager = new TrayManager({
     onShowSettings: () => settingsWindow?.show(),
@@ -56,6 +96,12 @@ app.whenReady().then(() => {
     getAppStatus,
     setAppStatus,
     onShowSettings: () => settingsWindow?.show(),
+    onPostureStatus: (status) => reminderManager?.onPostureUpdate(status),
+    onSettingsChanged: () => {
+      if (configStore && reminderManager) {
+        reminderManager.updateConfig(buildReminderConfig(configStore))
+      }
+    },
   })
 
   trayManager.updateStatus(appStatus)
@@ -63,7 +109,10 @@ app.whenReady().then(() => {
   // Expose for E2E testing
   ;(global as Record<string, unknown>).__postret = {
     showSettings: () => settingsWindow?.show(),
-    destroyAllWindows: () => settingsWindow?.destroy(),
+    destroyAllWindows: () => {
+      settingsWindow?.destroy()
+      overlayWindow?.destroy()
+    },
   }
 })
 
@@ -77,5 +126,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  reminderManager?.dispose()
+  blurController?.destroy()
   trayManager?.destroy()
 })

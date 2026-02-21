@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from './ipc-channels'
 import { handleCameraPermission } from '../permissions/camera-permission'
 import type { ConfigStore } from '../store/config-store'
-import type { AppStatus } from '../../src/types/ipc'
+import type { AppStatus, PostureStatus } from '../../src/types/ipc'
 import type { CalibrationData, PostureSettings } from '../../src/types/settings'
 
 interface IpcHandlerDeps {
@@ -10,6 +10,8 @@ interface IpcHandlerDeps {
   getAppStatus: () => AppStatus
   setAppStatus: (status: AppStatus) => void
   onShowSettings?: () => void
+  onPostureStatus?: (status: PostureStatus) => void
+  onSettingsChanged?: () => void
 }
 
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
@@ -21,6 +23,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: PostureSettings) => {
     configStore.setSettings(settings)
+    deps.onSettingsChanged?.()
   })
 
   ipcMain.handle(IPC_CHANNELS.STATUS_GET, () => {
@@ -43,5 +46,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle(IPC_CHANNELS.WINDOW_SETTINGS_OPEN, () => {
     deps.onShowSettings?.()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.POSTURE_STATUS, (_event, status: PostureStatus) => {
+    deps.onPostureStatus?.(status)
   })
 }

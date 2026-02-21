@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from './ipc/ipc-channels'
-import type { IpcApi } from '../src/types/ipc'
+import type { IpcApi, PostureStatus } from '../src/types/ipc'
 import type { CalibrationData, PostureSettings } from '../src/types/settings'
 
 const api: IpcApi = {
@@ -19,6 +19,9 @@ const api: IpcApi = {
 
   completeCalibration: (data: CalibrationData) =>
     ipcRenderer.invoke(IPC_CHANNELS.CALIBRATION_COMPLETE, data),
+
+  reportPostureStatus: (status: PostureStatus) =>
+    ipcRenderer.invoke(IPC_CHANNELS.POSTURE_STATUS, status),
 
   onStatusChange: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, status: string) =>

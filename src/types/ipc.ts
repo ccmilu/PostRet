@@ -29,6 +29,7 @@ export interface IpcApi {
   requestCameraPermission(): Promise<boolean>
   startCalibration(): Promise<void>
   completeCalibration(data: CalibrationData): Promise<void>
+  reportPostureStatus(status: PostureStatus): Promise<void>
   onStatusChange(callback: (status: AppStatus) => void): () => void
   onPause(callback: () => void): () => void
   onResume(callback: () => void): () => void
