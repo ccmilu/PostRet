@@ -54,6 +54,7 @@ function computeCalibrationBaseline(
     headTiltAngle: 0,
     faceFrameRatio: 0,
     faceY: 0,
+    noseToEarAvg: 0,
     shoulderDiff: 0,
   };
 
@@ -65,6 +66,7 @@ function computeCalibrationBaseline(
     sums.headTiltAngle += angles.headTiltAngle;
     sums.faceFrameRatio += angles.faceFrameRatio;
     sums.faceY += angles.faceY;
+    sums.noseToEarAvg += angles.noseToEarAvg;
     sums.shoulderDiff += angles.shoulderDiff;
   }
 
@@ -75,6 +77,7 @@ function computeCalibrationBaseline(
     headTiltAngle: sums.headTiltAngle / n,
     faceFrameRatio: sums.faceFrameRatio / n,
     faceY: sums.faceY / n,
+    noseToEarAvg: sums.noseToEarAvg / n,
     shoulderDiff: sums.shoulderDiff / n,
   };
 }
@@ -94,14 +97,19 @@ function analyzePhoto(
     headTilt: angles.headTiltAngle - baseline.headTiltAngle,
     faceFrameRatio: angles.faceFrameRatio - baseline.faceFrameRatio,
     faceYDelta: angles.faceY - baseline.faceY,
+    noseToEarAvg: angles.noseToEarAvg - baseline.noseToEarAvg,
     shoulderDiff: Math.abs(angles.shoulderDiff - baseline.shoulderDiff),
   };
 
   const violations = evaluateAllRules(deviations, thresholds, toggles);
   const detectedRules = violations.map((v) => v.rule);
 
-  // Compare detected vs expected
-  const expected = new Set(photo.metadata.expectedViolations);
+  // Compare detected vs expected.
+  // TOO_CLOSE has been merged into FORWARD_HEAD — map expected labels accordingly.
+  const mappedExpected = photo.metadata.expectedViolations.map(
+    (v) => v === 'TOO_CLOSE' ? 'FORWARD_HEAD' : v
+  );
+  const expected = new Set(mappedExpected);
   const detected = new Set(detectedRules);
 
   const falsePositives = detectedRules.filter((r) => !expected.has(r));
@@ -224,8 +232,9 @@ function printReport(
   console.log(`  shoulderDiff: ${baseline.shoulderDiff.toFixed(1)}deg`);
   console.log(`\nThresholds (sensitivity=0.5):`);
   console.log(`  forwardHead: ${thresholds.forwardHead.toFixed(1)}deg`);
+  console.log(`  forwardHeadFFR: ${thresholds.forwardHeadFFR.toFixed(4)}`);
+  console.log(`  forwardHeadNTE: ${thresholds.forwardHeadNTE.toFixed(4)}`);
   console.log(`  headTilt: ${thresholds.headTilt.toFixed(1)}deg`);
-  console.log(`  tooClose: ${thresholds.tooClose.toFixed(4)}`);
   console.log(`  shoulderAsymmetry: ${thresholds.shoulderAsymmetry.toFixed(1)}deg`);
 
   // Per-category breakdown
@@ -247,7 +256,7 @@ function printReport(
         details.push(`FN: ${r.falseNegatives.join(',')}`);
       }
       const detailStr = details.length > 0 ? ` (${details.join('; ')})` : '';
-      const devStr = `hf=${r.deviations.headForward.toFixed(1)} ht=${r.deviations.headTilt.toFixed(1)} ffr=${r.deviations.faceFrameRatio.toFixed(4)} sd=${r.deviations.shoulderDiff.toFixed(1)}`;
+      const devStr = `hf=${r.deviations.headForward.toFixed(1)} ht=${r.deviations.headTilt.toFixed(1)} ffr=${r.deviations.faceFrameRatio.toFixed(4)} nte=${r.deviations.noseToEarAvg.toFixed(4)} sd=${r.deviations.shoulderDiff.toFixed(1)}`;
       console.log(
         `  Photo ${r.photoId}: ${status} | expected=[${r.expectedViolations.join(',')}] detected=[${r.detectedViolations.join(',')}]${detailStr} | ${devStr}`
       );

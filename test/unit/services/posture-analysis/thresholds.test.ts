@@ -9,9 +9,10 @@ describe('getScaledThresholds', () => {
     const result = getScaledThresholds(0)
 
     expect(result.forwardHead).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHead * 2)
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * 2)
+    expect(result.forwardHeadNTE).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadNTE * 2)
     expect(result.slouch).toBeCloseTo(DEFAULT_THRESHOLDS.slouch * 2)
     expect(result.headTilt).toBeCloseTo(DEFAULT_THRESHOLDS.headTilt * 2)
-    expect(result.tooClose).toBeCloseTo(DEFAULT_THRESHOLDS.tooClose * 2)
     expect(result.shoulderAsymmetry).toBeCloseTo(DEFAULT_THRESHOLDS.shoulderAsymmetry * 2)
   })
 
@@ -19,9 +20,10 @@ describe('getScaledThresholds', () => {
     const result = getScaledThresholds(0.5)
 
     expect(result.forwardHead).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHead * 1.25)
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * 1.25)
+    expect(result.forwardHeadNTE).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadNTE * 1.25)
     expect(result.slouch).toBeCloseTo(DEFAULT_THRESHOLDS.slouch * 1.25)
     expect(result.headTilt).toBeCloseTo(DEFAULT_THRESHOLDS.headTilt * 1.25)
-    expect(result.tooClose).toBeCloseTo(DEFAULT_THRESHOLDS.tooClose * 1.25)
     expect(result.shoulderAsymmetry).toBeCloseTo(DEFAULT_THRESHOLDS.shoulderAsymmetry * 1.25)
   })
 
@@ -29,9 +31,10 @@ describe('getScaledThresholds', () => {
     const result = getScaledThresholds(1)
 
     expect(result.forwardHead).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHead * 0.5)
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * 0.5)
+    expect(result.forwardHeadNTE).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadNTE * 0.5)
     expect(result.slouch).toBeCloseTo(DEFAULT_THRESHOLDS.slouch * 0.5)
     expect(result.headTilt).toBeCloseTo(DEFAULT_THRESHOLDS.headTilt * 0.5)
-    expect(result.tooClose).toBeCloseTo(DEFAULT_THRESHOLDS.tooClose * 0.5)
     expect(result.shoulderAsymmetry).toBeCloseTo(DEFAULT_THRESHOLDS.shoulderAsymmetry * 0.5)
   })
 

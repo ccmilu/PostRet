@@ -7,6 +7,7 @@ const ANGLE_KEYS: ReadonlyArray<keyof PostureAngles> = [
   'headTiltAngle',
   'faceFrameRatio',
   'faceY',
+  'noseToEarAvg',
   'shoulderDiff',
 ] as const
 
@@ -16,6 +17,7 @@ const MAX_DRIFT_BY_KEY: Record<keyof PostureAngles, number> = {
   headTiltAngle: 8,
   faceFrameRatio: 0.1,
   faceY: 0.1,
+  noseToEarAvg: 0.05,
   shoulderDiff: 8,
 }
 

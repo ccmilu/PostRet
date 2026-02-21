@@ -68,6 +68,8 @@ function createGoodCalibration(): CalibrationData {
     torsoAngle: 0,
     headTiltAngle: 0,
     faceFrameRatio: 0.24, // |0.62 - 0.38| from normalized landmarks
+    faceY: 0.35,          // NOSE.y from normalized landmarks
+    noseToEarAvg: 0.1217, // avg(dist(nose,leftEar), dist(nose,rightEar)) ≈ sqrt(0.12^2+0.02^2)
     shoulderDiff: 0,
     timestamp: Date.now(),
   }
@@ -266,6 +268,8 @@ describe('PostureAnalyzer — screen angle compensation integration', () => {
         torsoAngle: angles.torsoAngle,
         headTiltAngle: angles.headTiltAngle,
         faceFrameRatio: angles.faceFrameRatio,
+        faceY: angles.faceY,
+        noseToEarAvg: angles.noseToEarAvg,
         shoulderDiff: angles.shoulderDiff,
         timestamp: Date.now(),
       }

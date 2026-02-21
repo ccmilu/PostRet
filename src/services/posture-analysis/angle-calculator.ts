@@ -72,6 +72,17 @@ export function faceY(normalizedLandmarks: readonly Landmark[]): number {
   return normalizedLandmarks[PoseLandmarkIndex.NOSE].y
 }
 
+export function noseToEarAvg(normalizedLandmarks: readonly Landmark[]): number {
+  const nose = normalizedLandmarks[PoseLandmarkIndex.NOSE]
+  const leftEar = normalizedLandmarks[PoseLandmarkIndex.LEFT_EAR]
+  const rightEar = normalizedLandmarks[PoseLandmarkIndex.RIGHT_EAR]
+
+  const distLeft = Math.sqrt((nose.x - leftEar.x) ** 2 + (nose.y - leftEar.y) ** 2)
+  const distRight = Math.sqrt((nose.x - rightEar.x) ** 2 + (nose.y - rightEar.y) ** 2)
+
+  return (distLeft + distRight) / 2
+}
+
 export function shoulderAsymmetry(worldLandmarks: readonly Landmark[]): number {
   const leftShoulder = worldLandmarks[PoseLandmarkIndex.LEFT_SHOULDER]
   const rightShoulder = worldLandmarks[PoseLandmarkIndex.RIGHT_SHOULDER]
@@ -91,6 +102,7 @@ export function extractPostureAngles(
     headTiltAngle: headTiltAngle(normalizedLandmarks),
     faceFrameRatio: faceToFrameRatio(normalizedLandmarks),
     faceY: faceY(normalizedLandmarks),
+    noseToEarAvg: noseToEarAvg(normalizedLandmarks),
     shoulderDiff: shoulderAsymmetry(worldLandmarks),
   }
 }

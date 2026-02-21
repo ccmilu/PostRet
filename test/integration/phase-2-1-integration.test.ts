@@ -101,7 +101,7 @@ function createFrame(overrides?: {
 
 function createCalibrationFromFrame(frame: DetectionFrame): CalibrationData {
   const analyzer = new PostureAnalyzer(
-    { headForwardAngle: 0, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, shoulderDiff: 0, timestamp: 0 },
+    { headForwardAngle: 0, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, faceY: 0, noseToEarAvg: 0, shoulderDiff: 0, timestamp: 0 },
     0.5,
     ALL_RULES_ON,
   )
@@ -111,6 +111,8 @@ function createCalibrationFromFrame(frame: DetectionFrame): CalibrationData {
     torsoAngle: result.angles.torsoAngle,
     headTiltAngle: result.angles.headTiltAngle,
     faceFrameRatio: result.angles.faceFrameRatio,
+    faceY: result.angles.faceY,
+    noseToEarAvg: result.angles.noseToEarAvg,
     shoulderDiff: result.angles.shoulderDiff,
     timestamp: Date.now(),
   }
@@ -177,7 +179,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
     it('headForward = original - pitchDelta × 0.8', () => {
       const angles: PostureAngles = {
         headForwardAngle: 20.0, torsoAngle: 5.0, headTiltAngle: 2.0,
-        faceFrameRatio: 0.2, shoulderDiff: 1.0,
+        faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 1.0,
       }
       const compensated = compensateAngles(angles, 10.0)
       expect(compensated.headForwardAngle).toBeCloseTo(12.0, 5)
@@ -186,7 +188,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
     it('other angles unchanged after compensation', () => {
       const angles: PostureAngles = {
         headForwardAngle: 20.0, torsoAngle: 5.0, headTiltAngle: 2.0,
-        faceFrameRatio: 0.2, shoulderDiff: 1.0,
+        faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 1.0,
       }
       const compensated = compensateAngles(angles, 10.0)
       expect(compensated.torsoAngle).toBe(5.0)
@@ -203,7 +205,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
     it('90° (reference) — deviation < 5°', () => {
       const pd = estimateAngleChange({ ...ref }, ref)
       const c = compensateAngles(
-        { headForwardAngle: trueHF, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, shoulderDiff: 0 },
+        { headForwardAngle: trueHF, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, faceY: 0, noseToEarAvg: 0, shoulderDiff: 0 },
         pd,
       )
       expect(Math.abs(c.headForwardAngle - trueHF)).toBeLessThan(5)
@@ -214,7 +216,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
       const pd = estimateAngleChange(cur, ref)
       const measured = trueHF + pd * 0.8
       const c = compensateAngles(
-        { headForwardAngle: measured, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, shoulderDiff: 0 },
+        { headForwardAngle: measured, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, faceY: 0, noseToEarAvg: 0, shoulderDiff: 0 },
         pd,
       )
       expect(Math.abs(c.headForwardAngle - trueHF)).toBeLessThan(5)
@@ -225,7 +227,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
       const pd = estimateAngleChange(cur, ref)
       const measured = trueHF + pd * 0.8
       const c = compensateAngles(
-        { headForwardAngle: measured, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, shoulderDiff: 0 },
+        { headForwardAngle: measured, torsoAngle: 0, headTiltAngle: 0, faceFrameRatio: 0, faceY: 0, noseToEarAvg: 0, shoulderDiff: 0 },
         pd,
       )
       expect(Math.abs(c.headForwardAngle - trueHF)).toBeLessThan(5)
@@ -240,7 +242,7 @@ describe('Phase 2.1 Acceptance — Screen Angle Estimator', () => {
 describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   const originalBaseline: CalibrationData = {
     headForwardAngle: 5.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-    faceFrameRatio: 0.2, shoulderDiff: 0.5, timestamp: 1000000,
+    faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5, timestamp: 1000000,
   }
   let ab: AdaptiveBaseline
 
@@ -251,7 +253,7 @@ describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   it('30 seconds good posture → baseline starts drifting', () => {
     const angles: PostureAngles = {
       headForwardAngle: 10.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-      faceFrameRatio: 0.2, shoulderDiff: 0.5,
+      faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5,
     }
     ab.update(true, angles, 30.0)
     expect(ab.getCurrentBaseline().headForwardAngle).toBe(5.0)
@@ -262,7 +264,7 @@ describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   it('60 seconds total → drift < 0.5°', () => {
     const angles: PostureAngles = {
       headForwardAngle: 15.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-      faceFrameRatio: 0.2, shoulderDiff: 0.5,
+      faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5,
     }
     ab.update(true, angles, 30.0)
     for (let i = 0; i < 30; i++) ab.update(true, angles, 1.0)
@@ -274,7 +276,7 @@ describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   it('drift ≤ 8° regardless of time', () => {
     const angles: PostureAngles = {
       headForwardAngle: 100.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-      faceFrameRatio: 0.2, shoulderDiff: 0.5,
+      faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5,
     }
     ab.update(true, angles, 30.0)
     for (let i = 0; i < 50000; i++) ab.update(true, angles, 1.0)
@@ -284,7 +286,7 @@ describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   it('bad posture → no drift, goodPostureDuration resets', () => {
     const angles: PostureAngles = {
       headForwardAngle: 10.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-      faceFrameRatio: 0.2, shoulderDiff: 0.5,
+      faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5,
     }
     ab.update(true, angles, 25.0)
     ab.update(false, angles, 1.0)
@@ -296,7 +298,7 @@ describe('Phase 2.1 Acceptance — Adaptive Baseline', () => {
   it('reset() restores original baseline and duration', () => {
     const angles: PostureAngles = {
       headForwardAngle: 10.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-      faceFrameRatio: 0.2, shoulderDiff: 0.5,
+      faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5,
     }
     ab.update(true, angles, 30.0)
     ab.update(true, angles, 50.0)
@@ -468,13 +470,13 @@ describe('Phase 2.1 Integration — PostureAnalyzer Full Pipeline', () => {
     it('10 minutes extreme: drift never exceeds 8° (via AdaptiveBaseline directly)', () => {
       const baseline: CalibrationData = {
         headForwardAngle: 5.0, torsoAngle: 3.0, headTiltAngle: 1.0,
-        faceFrameRatio: 0.2, shoulderDiff: 0.5, timestamp: 0,
+        faceFrameRatio: 0.2, faceY: 0.35, noseToEarAvg: 0, shoulderDiff: 0.5, timestamp: 0,
       }
       const ab = new AdaptiveBaseline(baseline)
 
       const angles: PostureAngles = {
         headForwardAngle: 50.0, torsoAngle: 30.0, headTiltAngle: 20.0,
-        faceFrameRatio: 0.8, shoulderDiff: 20.0,
+        faceFrameRatio: 0.8, faceY: 0.5, noseToEarAvg: 0.1, shoulderDiff: 20.0,
       }
 
       // 10 minutes at 500ms = 1200 updates
@@ -631,6 +633,8 @@ describe('Phase 2.1 Integration — Real Photo Data', () => {
       torsoAngle: angles.torsoAngle,
       headTiltAngle: angles.headTiltAngle,
       faceFrameRatio: angles.faceFrameRatio,
+      faceY: angles.faceY,
+      noseToEarAvg: angles.noseToEarAvg,
       shoulderDiff: angles.shoulderDiff,
       timestamp: Date.now(),
     }

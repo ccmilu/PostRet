@@ -85,6 +85,8 @@ function createGoodCalibration(): CalibrationData {
     torsoAngle: 0,
     headTiltAngle: 0,
     faceFrameRatio: 0.16, // |0.42 - 0.58| from normalized landmarks
+    faceY: 0.4,           // NOSE.y from normalized landmarks
+    noseToEarAvg: 0.08,   // avg(|nose-leftEar|, |nose-rightEar|) = avg(0.08, 0.08)
     shoulderDiff: 0,
     timestamp: Date.now(),
   }
@@ -336,6 +338,8 @@ describe('PostureAnalyzer', () => {
         torsoAngle: 0,
         headTiltAngle: 0,
         faceFrameRatio: 0.16,
+        faceY: 0.4,
+        noseToEarAvg: 0.08,
         shoulderDiff: 0,
         timestamp: Date.now(),
       }
@@ -397,10 +401,11 @@ describe('PostureAnalyzer', () => {
       const result1 = feedFrames(analyzer, badFrame, 10)
       expect(result1.violations.some(v => v.rule === 'FORWARD_HEAD')).toBe(true)
 
-      // Disable forward head rule
+      // Disable forward head rule (tooClose is treated as alias for forwardHead)
       analyzer.updateRuleToggles({
         ...ALL_RULES_ON,
         forwardHead: false,
+        tooClose: false,
       })
       analyzer.reset()
 
@@ -478,6 +483,8 @@ describe('PostureAnalyzer', () => {
         torsoAngle: angles.torsoAngle,
         headTiltAngle: angles.headTiltAngle,
         faceFrameRatio: angles.faceFrameRatio,
+        faceY: angles.faceY,
+        noseToEarAvg: angles.noseToEarAvg,
         shoulderDiff: angles.shoulderDiff,
         timestamp: Date.now(),
       }
@@ -496,6 +503,8 @@ describe('PostureAnalyzer', () => {
         torsoAngle: calAngles.torsoAngle,
         headTiltAngle: calAngles.headTiltAngle,
         faceFrameRatio: calAngles.faceFrameRatio,
+        faceY: calAngles.faceY,
+        noseToEarAvg: calAngles.noseToEarAvg,
         shoulderDiff: calAngles.shoulderDiff,
         timestamp: Date.now(),
       }
@@ -521,6 +530,8 @@ describe('PostureAnalyzer', () => {
         torsoAngle: calAngles.torsoAngle,
         headTiltAngle: calAngles.headTiltAngle,
         faceFrameRatio: calAngles.faceFrameRatio,
+        faceY: calAngles.faceY,
+        noseToEarAvg: calAngles.noseToEarAvg,
         shoulderDiff: calAngles.shoulderDiff,
         timestamp: Date.now(),
       }
@@ -547,6 +558,8 @@ describe('PostureAnalyzer', () => {
         torsoAngle: calAngles.torsoAngle,
         headTiltAngle: calAngles.headTiltAngle,
         faceFrameRatio: calAngles.faceFrameRatio,
+        faceY: calAngles.faceY,
+        noseToEarAvg: calAngles.noseToEarAvg,
         shoulderDiff: calAngles.shoulderDiff,
         timestamp: Date.now(),
       }

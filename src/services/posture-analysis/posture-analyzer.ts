@@ -37,6 +37,7 @@ const JITTER_THRESHOLDS = {
   headTilt: 1.0,
   faceFrameRatio: 0.02,
   faceY: 0.02,
+  noseToEarAvg: 0.005,
   shoulderDiff: 1.0,
 } as const
 
@@ -51,6 +52,8 @@ interface SmoothingFilters {
   readonly faceRatioJitter: JitterFilter
   readonly faceYEma: EMAFilter
   readonly faceYJitter: JitterFilter
+  readonly noseToEarAvgEma: EMAFilter
+  readonly noseToEarAvgJitter: JitterFilter
   readonly shoulderEma: EMAFilter
   readonly shoulderJitter: JitterFilter
 }
@@ -67,6 +70,8 @@ function createFilters(): SmoothingFilters {
     faceRatioJitter: new JitterFilter(JITTER_THRESHOLDS.faceFrameRatio),
     faceYEma: new EMAFilter(EMA_ALPHA),
     faceYJitter: new JitterFilter(JITTER_THRESHOLDS.faceY),
+    noseToEarAvgEma: new EMAFilter(EMA_ALPHA),
+    noseToEarAvgJitter: new JitterFilter(JITTER_THRESHOLDS.noseToEarAvg),
     shoulderEma: new EMAFilter(EMA_ALPHA),
     shoulderJitter: new JitterFilter(JITTER_THRESHOLDS.shoulderDiff),
   }
@@ -83,6 +88,8 @@ function resetFilters(filters: SmoothingFilters): void {
   filters.faceRatioJitter.reset()
   filters.faceYEma.reset()
   filters.faceYJitter.reset()
+  filters.noseToEarAvgEma.reset()
+  filters.noseToEarAvgJitter.reset()
   filters.shoulderEma.reset()
   filters.shoulderJitter.reset()
 }
@@ -159,6 +166,7 @@ export class PostureAnalyzer {
         headTiltAngle: 0,
         faceFrameRatio: 0,
         faceY: 0,
+        noseToEarAvg: 0,
         shoulderDiff: 0,
       }
       const zeroDeviations: AngleDeviations = {
@@ -167,6 +175,7 @@ export class PostureAnalyzer {
         headTilt: 0,
         faceFrameRatio: 0,
         faceYDelta: 0,
+        noseToEarAvg: 0,
         shoulderDiff: 0,
       }
       return {
@@ -198,6 +207,9 @@ export class PostureAnalyzer {
     const smoothedFaceY = this.filters.faceYJitter.update(
       this.filters.faceYEma.update(compensatedAngles.faceY)
     )
+    const smoothedNoseToEarAvg = this.filters.noseToEarAvgJitter.update(
+      this.filters.noseToEarAvgEma.update(compensatedAngles.noseToEarAvg)
+    )
     const smoothedShoulderDiff = this.filters.shoulderJitter.update(
       this.filters.shoulderEma.update(compensatedAngles.shoulderDiff)
     )
@@ -208,6 +220,7 @@ export class PostureAnalyzer {
       headTiltAngle: smoothedHeadTilt,
       faceFrameRatio: smoothedFaceRatio,
       faceY: smoothedFaceY,
+      noseToEarAvg: smoothedNoseToEarAvg,
       shoulderDiff: smoothedShoulderDiff,
     }
 
@@ -221,6 +234,7 @@ export class PostureAnalyzer {
       headTilt: smoothedHeadTilt - currentBaseline.headTiltAngle,
       faceFrameRatio: smoothedFaceRatio - currentBaseline.faceFrameRatio,
       faceYDelta: smoothedFaceY - currentBaseline.faceY,
+      noseToEarAvg: smoothedNoseToEarAvg - (currentBaseline.noseToEarAvg ?? 0),
       shoulderDiff: Math.abs(smoothedShoulderDiff - currentBaseline.shoulderDiff),
     }
 
@@ -236,23 +250,23 @@ export class PostureAnalyzer {
       || (typeof globalThis !== 'undefined'
         && (globalThis as Record<string, unknown>).__POSTURE_DEBUG === true)
     if (debugEnabled) {
+      const nteDelta = deviations.noseToEarAvg
       const ffrDelta = deviations.faceFrameRatio
       const angleDelta = deviations.headForward
+      const nteThresh = scaledThresholds.forwardHeadNTE
       const ffrThresh = scaledThresholds.forwardHeadFFR
       const angleThresh = scaledThresholds.forwardHead
+      const nteScore = nteThresh > 0 ? Math.max(0, nteDelta) / nteThresh : 0
       const ffrScore = ffrThresh > 0 ? Math.max(0, ffrDelta) / ffrThresh : 0
       const angleScore = angleThresh > 0 ? Math.max(0, angleDelta) / angleThresh : 0
-      const fhCombined = 0.6 * ffrScore + 0.4 * angleScore
+      const fhCombined = 0.6 * nteScore + 0.2 * ffrScore + 0.2 * angleScore
 
       console.log(
         `[PostureDebug] ` +
-        `ffr: ${smoothedFaceRatio.toFixed(4)} ` +
-        `baseline: ${currentBaseline.faceFrameRatio.toFixed(4)} ` +
-        `delta: ${ffrDelta.toFixed(4)} | ` +
-        `FH score: ${fhCombined.toFixed(2)} (ffr=${ffrScore.toFixed(2)} angle=${angleScore.toFixed(2)}) ` +
-        `thresh: ffr>${ffrThresh.toFixed(4)} angle>${angleThresh.toFixed(1)} | ` +
-        `tooClose delta: ${ffrDelta.toFixed(4)} thresh>${scaledThresholds.tooClose.toFixed(4)} | ` +
-        `violations: [${violations.map(v => v.rule).join(',')}]`
+        `nte: ${smoothedNoseToEarAvg.toFixed(4)} base: ${(currentBaseline.noseToEarAvg ?? 0).toFixed(4)} d: ${nteDelta.toFixed(4)} | ` +
+        `ffr: ${smoothedFaceRatio.toFixed(4)} base: ${currentBaseline.faceFrameRatio.toFixed(4)} d: ${ffrDelta.toFixed(4)} | ` +
+        `FH: ${fhCombined.toFixed(2)} (nte=${nteScore.toFixed(2)} ffr=${ffrScore.toFixed(2)} angle=${angleScore.toFixed(2)}) | ` +
+        `[${violations.map(v => v.rule).join(',')}]`
       )
     }
 
