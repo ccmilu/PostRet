@@ -8,13 +8,16 @@ import { getScaledThresholds } from './thresholds'
 import { evaluateAllRules } from './posture-rules'
 import { EMAFilter, JitterFilter } from '@/utils/smoothing'
 
+// Landmarks essential for the primary posture checks (head-forward, head-tilt,
+// too-close, shoulder-asymmetry).  LEFT_HIP / RIGHT_HIP are intentionally
+// excluded because the slouch rule is disabled by default and hips are rarely
+// visible in a typical desk-webcam setup — including them caused
+// hasLowVisibility to discard almost every frame, producing all-zero readings.
 const CRITICAL_LANDMARKS = [
   PoseLandmarkIndex.LEFT_EAR,
   PoseLandmarkIndex.RIGHT_EAR,
   PoseLandmarkIndex.LEFT_SHOULDER,
   PoseLandmarkIndex.RIGHT_SHOULDER,
-  PoseLandmarkIndex.LEFT_HIP,
-  PoseLandmarkIndex.RIGHT_HIP,
 ] as const
 
 const EMA_ALPHA = 0.3
@@ -77,12 +80,14 @@ function computeConfidence(worldLandmarks: readonly Landmark[]): number {
 }
 
 function hasLowVisibility(worldLandmarks: readonly Landmark[]): boolean {
+  let lowCount = 0
   for (const idx of CRITICAL_LANDMARKS) {
     if (worldLandmarks[idx].visibility < 0.5) {
-      return true
+      lowCount++
     }
   }
-  return false
+  // Discard frame only when more than half of critical landmarks are invisible
+  return lowCount > CRITICAL_LANDMARKS.length / 2
 }
 
 export interface AnalyzeResult {

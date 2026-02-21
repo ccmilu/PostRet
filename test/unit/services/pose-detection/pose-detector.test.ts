@@ -272,6 +272,44 @@ describe('pose-detector', () => {
       }
     })
 
+    it('copies visibility from normalizedLandmarks to worldLandmarks', async () => {
+      // Simulate MediaPipe behavior: worldLandmarks have visibility=0,
+      // but normalizedLandmarks (result.landmarks) have real visibility values
+      const normalizedLandmarks = Array.from({ length: 33 }, (_, i) => ({
+        x: i * 0.01,
+        y: i * 0.02,
+        z: i * 0.001,
+        visibility: 0.85 + i * 0.001,
+      }))
+      const worldLandmarksNoVis = Array.from({ length: 33 }, (_, i) => ({
+        x: i * 0.1,
+        y: i * 0.2,
+        z: i * 0.01,
+        visibility: 0, // worldLandmarks often have 0 visibility at runtime
+      }))
+      mockDetectForVideo.mockReturnValue({
+        landmarks: [normalizedLandmarks],
+        worldLandmarks: [worldLandmarksNoVis],
+      })
+
+      const detector = createPoseDetector()
+      await detector.initialize()
+
+      const video = makeMockVideoElement()
+      const result = detector.detect(video, 1000)
+
+      expect(result).not.toBeNull()
+      // worldLandmarks should use xyz from world data but visibility from normalized
+      for (let i = 0; i < 33; i++) {
+        expect(result!.worldLandmarks[i].x).toBe(worldLandmarksNoVis[i].x)
+        expect(result!.worldLandmarks[i].y).toBe(worldLandmarksNoVis[i].y)
+        expect(result!.worldLandmarks[i].visibility).toBeCloseTo(
+          normalizedLandmarks[i].visibility,
+          5
+        )
+      }
+    })
+
     it('uses landmarks as worldLandmarks when worldLandmarks is missing', async () => {
       const landmarks33 = makeMockLandmarks(33)
       mockDetectForVideo.mockReturnValue({

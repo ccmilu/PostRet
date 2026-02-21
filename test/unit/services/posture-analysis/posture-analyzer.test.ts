@@ -211,34 +211,73 @@ describe('PostureAnalyzer', () => {
   })
 
   describe('low confidence frames', () => {
-    it('returns isGood=true with low confidence when visibility < 0.5', () => {
+    it('discards frame when majority of critical landmarks have low visibility', () => {
+      // 3 out of 4 critical landmarks (ears + shoulders) below 0.5 → discard
       const lowVisFrame = createMockFrame({
         worldLandmarks: {
           [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.6, z: 0, visibility: 0.2 },
           [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: -0.6, z: 0, visibility: 0.3 },
           [PoseLandmarkIndex.LEFT_SHOULDER]: { x: -0.15, y: -0.3, z: 0, visibility: 0.3 },
-          [PoseLandmarkIndex.RIGHT_SHOULDER]: { x: 0.15, y: -0.3, z: 0, visibility: 0.2 },
-          [PoseLandmarkIndex.LEFT_HIP]: { x: -0.1, y: 0.2, z: 0, visibility: 0.4 },
-          [PoseLandmarkIndex.RIGHT_HIP]: { x: 0.1, y: 0.2, z: 0, visibility: 0.3 },
+          [PoseLandmarkIndex.RIGHT_SHOULDER]: { x: 0.15, y: -0.3, z: 0, visibility: 0.9 },
         },
       })
       const result = analyzer.analyze(lowVisFrame)
       expect(result.isGood).toBe(true)
       expect(result.violations).toHaveLength(0)
-      // avg = (0.2 + 0.3 + 0.3 + 0.2 + 0.4 + 0.3) / 6 ≈ 0.283
+      // Confidence is still computed: avg = (0.2 + 0.3 + 0.3 + 0.9) / 4 = 0.425
       expect(result.confidence).toBeLessThan(0.5)
     })
 
-    it('marks low confidence when any critical landmark has visibility < 0.5', () => {
-      const lowVisFrame = createMockFrame({
+    it('does NOT discard frame when only one critical landmark has low visibility', () => {
+      // 1 out of 4 critical landmarks below 0.5 → NOT discarded, analysis runs
+      const frame = createMockFrame({
         worldLandmarks: {
-          // Only one landmark has low visibility
-          [PoseLandmarkIndex.LEFT_HIP]: { x: -0.1, y: 0.2, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.6, z: 0, visibility: 0.3 },
+          // rest default to 1.0
         },
       })
-      const result = analyzer.analyze(lowVisFrame)
-      expect(result.isGood).toBe(true)
-      expect(result.violations).toHaveLength(0)
+      const result = analyzer.analyzeDetailed(frame)
+      // Frame should be analyzed (not discarded), so angles should be non-zero
+      // (they come from the "good posture" default landmarks)
+      const anglesSum = Math.abs(result.angles.headForwardAngle)
+        + Math.abs(result.angles.headTiltAngle)
+        + Math.abs(result.angles.faceFrameRatio)
+        + Math.abs(result.angles.shoulderDiff)
+      expect(anglesSum).toBeGreaterThan(0)
+    })
+
+    it('does NOT discard frame when hips have low visibility (hips not in critical set)', () => {
+      // Hips are not critical landmarks — low hip visibility should not discard frame
+      const frame = createMockFrame({
+        worldLandmarks: {
+          [PoseLandmarkIndex.LEFT_HIP]: { x: -0.1, y: 0.2, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.RIGHT_HIP]: { x: 0.1, y: 0.2, z: 0, visibility: 0.1 },
+        },
+      })
+      const result = analyzer.analyzeDetailed(frame)
+      // Ears and shoulders are all visible (1.0), so frame should be analyzed
+      const anglesSum = Math.abs(result.angles.headForwardAngle)
+        + Math.abs(result.angles.headTiltAngle)
+        + Math.abs(result.angles.faceFrameRatio)
+        + Math.abs(result.angles.shoulderDiff)
+      expect(anglesSum).toBeGreaterThan(0)
+    })
+
+    it('discards frame when all critical landmarks invisible', () => {
+      const lowVisFrame = createMockFrame({
+        worldLandmarks: {
+          [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.6, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: -0.6, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.LEFT_SHOULDER]: { x: -0.15, y: -0.3, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.RIGHT_SHOULDER]: { x: 0.15, y: -0.3, z: 0, visibility: 0.1 },
+        },
+      })
+      const result = analyzer.analyzeDetailed(lowVisFrame)
+      // All 4 critical landmarks below 0.5 → frame discarded → zero angles
+      expect(result.angles.headForwardAngle).toBe(0)
+      expect(result.angles.headTiltAngle).toBe(0)
+      expect(result.status.isGood).toBe(true)
+      expect(result.status.violations).toHaveLength(0)
     })
   })
 
@@ -360,20 +399,21 @@ describe('PostureAnalyzer', () => {
       expect(result.confidence).toBeCloseTo(1.0, 1)
     })
 
-    it('returns average visibility of critical landmarks', () => {
+    it('returns average visibility of critical landmarks (ears + shoulders only)', () => {
       const frame = createMockFrame({
         worldLandmarks: {
           [PoseLandmarkIndex.LEFT_EAR]: { x: -0.08, y: -0.6, z: 0, visibility: 0.8 },
           [PoseLandmarkIndex.RIGHT_EAR]: { x: 0.08, y: -0.6, z: 0, visibility: 0.9 },
           [PoseLandmarkIndex.LEFT_SHOULDER]: { x: -0.15, y: -0.3, z: 0, visibility: 0.7 },
           [PoseLandmarkIndex.RIGHT_SHOULDER]: { x: 0.15, y: -0.3, z: 0, visibility: 0.6 },
-          [PoseLandmarkIndex.LEFT_HIP]: { x: -0.1, y: 0.2, z: 0, visibility: 1.0 },
-          [PoseLandmarkIndex.RIGHT_HIP]: { x: 0.1, y: 0.2, z: 0, visibility: 1.0 },
+          // Hips are NOT in critical set — their visibility does not affect confidence
+          [PoseLandmarkIndex.LEFT_HIP]: { x: -0.1, y: 0.2, z: 0, visibility: 0.1 },
+          [PoseLandmarkIndex.RIGHT_HIP]: { x: 0.1, y: 0.2, z: 0, visibility: 0.1 },
         },
       })
       const result = analyzer.analyze(frame)
-      // avg = (0.8 + 0.9 + 0.7 + 0.6 + 1.0 + 1.0) / 6 = 5.0 / 6 ≈ 0.833
-      expect(result.confidence).toBeCloseTo(5.0 / 6, 1)
+      // avg = (0.8 + 0.9 + 0.7 + 0.6) / 4 = 3.0 / 4 = 0.75
+      expect(result.confidence).toBeCloseTo(0.75, 1)
     })
   })
 })
