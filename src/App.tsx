@@ -37,6 +37,21 @@ export function App() {
     detection.start(calibration, settings.detection)
   }, [loading, settings, detection.state, detection.start])
 
+  // Handle detection enabled/disabled toggle
+  useEffect(() => {
+    if (loading) {
+      return
+    }
+
+    if (!settings.detection.enabled) {
+      // enabled → false: stop detection if running
+      if (detection.state === 'detecting' || detection.state === 'paused' || detection.state === 'initializing') {
+        detection.stop()
+      }
+    }
+    // enabled → true is handled by the auto-start useEffect above
+  }, [loading, settings.detection.enabled, detection.state, detection.stop])
+
   // Sync detection settings changes
   useEffect(() => {
     if (detection.state === 'detecting' || detection.state === 'paused') {
