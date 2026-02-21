@@ -24,6 +24,7 @@ let overlayWindow: OverlayWindow | null = null
 let blurController: BlurController | null = null
 let reminderManager: ReminderManager | null = null
 let appStatus: AppStatus = 'paused'
+let isQuitting = false
 
 function getAppStatus(): AppStatus {
   return appStatus
@@ -161,15 +162,37 @@ app.on('window-all-closed', () => {
   // Do nothing — keep the app running
 })
 
-app.on('before-quit', () => {
-  // Notify renderer to stop detection and release camera
-  settingsWindow?.sendPause()
+app.on('before-quit', (e) => {
+  if (isQuitting) {
+    return
+  }
+  isQuitting = true
+  e.preventDefault()
 
   reminderManager?.dispose()
   blurController?.destroy()
   trayManager?.destroy()
 
-  // Destroy windows (removes close-prevention so app can exit cleanly)
-  settingsWindow?.destroy()
-  overlayWindow?.destroy()
+  // Release camera directly in renderer before destroying windows
+  const win = settingsWindow?.getWindow()
+  if (win && !win.isDestroyed()) {
+    win.webContents
+      .executeJavaScript(
+        `document.querySelectorAll('video').forEach(v => {
+          const s = v.srcObject;
+          if (s && s.getTracks) s.getTracks().forEach(t => t.stop());
+          v.srcObject = null;
+        }); true`
+      )
+      .catch(() => {})
+      .finally(() => {
+        settingsWindow?.destroy()
+        overlayWindow?.destroy()
+        app.exit(0)
+      })
+  } else {
+    settingsWindow?.destroy()
+    overlayWindow?.destroy()
+    app.exit(0)
+  }
 })
