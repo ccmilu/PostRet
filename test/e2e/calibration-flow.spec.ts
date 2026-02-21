@@ -27,7 +27,7 @@ test.afterAll(async () => {
 })
 
 test.describe('Calibration Flow', () => {
-  test('clicking calibration button navigates to calibration page', async () => {
+  test('clicking calibration button navigates to calibration wizard', async () => {
     // Ensure on General tab
     const generalTab = settingsPage.locator('[data-testid="settings-tab-general"]')
     await generalTab.click()
@@ -37,62 +37,78 @@ test.describe('Calibration Flow', () => {
     const calibrationBtn = settingsPage.locator('[data-testid="start-calibration-btn"]')
     await calibrationBtn.click()
 
-    // Should navigate to calibration page
-    const calibrationPage = settingsPage.locator('[data-testid="calibration-page"]')
-    await expect(calibrationPage).toBeVisible({ timeout: 5000 })
+    // Should navigate to calibration wizard
+    const calibrationWizard = settingsPage.locator('[data-testid="calibration-wizard"]')
+    await expect(calibrationWizard).toBeVisible({ timeout: 5000 })
   })
 
-  test('calibration page shows idle state with start button', async () => {
-    // The idle section should show (camera may or may not work, but the button should be there)
-    const idleSection = settingsPage.locator('[data-testid="calibration-idle"]')
+  test('calibration wizard shows welcome step with start button', async () => {
+    // Step 1 (welcome) should show, or camera error may appear
+    const step1 = settingsPage.locator('[data-testid="wizard-step-1"]')
     const cameraError = settingsPage.locator('[data-testid="calibration-camera-error"]')
 
-    // Wait for either idle section (camera works) or camera error
+    // Wait for either welcome step (camera works) or camera error
     await expect(
-      idleSection.or(cameraError),
+      step1.or(cameraError),
     ).toBeVisible({ timeout: 5000 })
+
+    if (await step1.isVisible()) {
+      const startBtn = settingsPage.locator('[data-testid="wizard-start-btn"]')
+      await expect(startBtn).toBeVisible()
+      await expect(startBtn).toHaveText('开始校准')
+    }
   })
 
-  test('starting calibration triggers state change', async () => {
-    // If there's a camera error, click retry first, or try to start if idle
-    const startBtn = settingsPage.locator('[data-testid="calibration-start-btn"]')
-    const retryBtn = settingsPage.locator('[data-testid="calibration-retry-btn"]')
+  test('starting calibration transitions to step 2 or error', async () => {
+    const startBtn = settingsPage.locator('[data-testid="wizard-start-btn"]')
+    const cameraError = settingsPage.locator('[data-testid="calibration-camera-error"]')
 
-    if (await startBtn.isVisible()) {
-      await startBtn.click()
-    } else if (await retryBtn.isVisible()) {
-      // Camera error — can't proceed with real calibration
-      // Skip the rest of this test gracefully
+    if (await cameraError.isVisible()) {
+      // Camera error — can't proceed further
       return
     }
 
-    // In Electron E2E, the IPC startCalibration resolves immediately,
-    // so we should see either collecting briefly or completed state
-    const completedOrCollecting = settingsPage.locator(
-      '[data-testid="calibration-completed"], [data-testid="calibration-collecting"]',
-    )
-    await expect(completedOrCollecting.first()).toBeVisible({ timeout: 5000 })
+    if (!(await startBtn.isVisible())) {
+      return
+    }
+
+    await startBtn.click()
+
+    // After clicking start, should see step 2, camera error, or wizard error
+    const step2 = settingsPage.locator('[data-testid="wizard-step-2"]')
+    const wizardError = settingsPage.locator('[data-testid="calibration-error"]')
+
+    await expect(
+      step2.or(cameraError).or(wizardError),
+    ).toBeVisible({ timeout: 8000 })
   })
 
-  test('calibration completes and shows success', async () => {
-    // Wait for completed state (IPC calibration completes quickly)
-    const completedSection = settingsPage.locator('[data-testid="calibration-completed"]')
-    await expect(completedSection).toBeVisible({ timeout: 8000 })
+  test('wizard shows step indicator dots', async () => {
+    const indicator = settingsPage.locator('[data-testid="wizard-steps-indicator"]')
+    await expect(indicator).toBeVisible()
 
-    // Should show success text
-    const successText = settingsPage.locator('.calibration-success-text')
-    await expect(successText).toContainText('校准完成')
+    const dots = indicator.locator('.wizard-step-dot')
+    await expect(dots).toHaveCount(4)
   })
 
-  test('clicking "返回设置" returns to settings page', async () => {
-    const backBtn = settingsPage.locator('[data-testid="calibration-back-btn"]')
-    await expect(backBtn).toBeVisible({ timeout: 3000 })
-    await expect(backBtn).toHaveText('返回设置')
+  test('wizard error or step 2 allows going back to step 1', async () => {
+    // If we're in an error state, the retry button should go back to step 1
+    const wizardError = settingsPage.locator('[data-testid="calibration-error"]')
+    const step2 = settingsPage.locator('[data-testid="wizard-step-2"]')
 
-    await backBtn.click()
-
-    // Should be back on settings layout
-    const settingsLayout = settingsPage.locator('[data-testid="settings-layout"]')
-    await expect(settingsLayout).toBeVisible({ timeout: 3000 })
+    if (await wizardError.isVisible()) {
+      const retryBtn = settingsPage.locator('[data-testid="calibration-retry-btn"]')
+      await retryBtn.click()
+      const step1 = settingsPage.locator('[data-testid="wizard-step-1"]')
+      await expect(step1).toBeVisible({ timeout: 3000 })
+    } else if (await step2.isVisible()) {
+      const backBtn = settingsPage.locator('[data-testid="wizard-back-btn"]')
+      await backBtn.click()
+      const step1 = settingsPage.locator('[data-testid="wizard-step-1"]')
+      await expect(step1).toBeVisible({ timeout: 3000 })
+    }
+    // If camera error, we simply verify the wizard is still showing
+    const wizard = settingsPage.locator('[data-testid="calibration-wizard"]')
+    await expect(wizard).toBeVisible()
   })
 })

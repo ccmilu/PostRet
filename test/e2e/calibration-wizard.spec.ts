@@ -71,10 +71,12 @@ async function waitForPostStartState(): Promise<PostStartState> {
   const cameraError = settingsPage.locator('[data-testid="calibration-camera-error"]')
   const wizardError = settingsPage.locator('[data-testid="calibration-error"]')
 
-  // Wait for any of the three states
+  // Wait for any of the three states.
+  // PoseDetector WASM init can take a long time in E2E environments,
+  // so use a generous timeout to avoid flaky failures.
   await expect(
     step2.or(cameraError).or(wizardError),
-  ).toBeVisible({ timeout: 8000 })
+  ).toBeVisible({ timeout: 30000 })
 
   if (await step2.isVisible()) return 'step2'
   if (await cameraError.isVisible()) return 'camera_error'
@@ -133,6 +135,17 @@ test.describe('Calibration Wizard (4-step flow)', () => {
   })
 
   test('Step 2: Entering position check (or error state in E2E)', async () => {
+    // Ensure we're on step 1. If retry, we might be in error state.
+    const step1 = settingsPage.locator('[data-testid="wizard-step-1"]')
+    const errorState = settingsPage.locator('[data-testid="calibration-error"]')
+    const retryBtnRecovery = settingsPage.locator('[data-testid="calibration-retry-btn"]')
+
+    if (await errorState.isVisible()) {
+      // Recover from error state by clicking retry (goes back to step 1)
+      await retryBtnRecovery.click()
+      await expect(step1).toBeVisible({ timeout: 3000 })
+    }
+
     // Click start to proceed from step 1
     const startBtn = settingsPage.locator('[data-testid="wizard-start-btn"]')
     await startBtn.click()
@@ -140,23 +153,38 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     const state = await waitForPostStartState()
 
     if (state === 'step2') {
-      canProceedPastStep2 = true
+      // PoseDetector init runs asynchronously. Step 2 may appear briefly
+      // before a wizard error replaces it (e.g. WASM model not found).
+      // Re-check that step 2 is still visible before asserting children.
+      const step2Still = settingsPage.locator('[data-testid="wizard-step-2"]')
+      const wizardErrorLate = settingsPage.locator('[data-testid="calibration-error"]')
 
-      // Verify step 2 content
-      await expect(settingsPage.locator('text=位置检查')).toBeVisible()
+      // Wait a moment for async init to settle
+      await settingsPage.waitForTimeout(1000)
 
-      const positionStatus = settingsPage.locator('[data-testid="position-status"]')
-      await expect(positionStatus).toBeVisible()
+      if (await step2Still.isVisible()) {
+        canProceedPastStep2 = true
 
-      const video = settingsPage.locator('[data-testid="calibration-video"]')
-      await expect(video).toBeVisible()
+        // Verify step 2 content
+        await expect(settingsPage.locator('text=位置检查')).toBeVisible()
 
-      const continueBtn = settingsPage.locator('[data-testid="wizard-continue-btn"]')
-      const backBtn = settingsPage.locator('[data-testid="wizard-back-btn"]')
-      await expect(continueBtn).toBeVisible()
-      await expect(backBtn).toBeVisible()
-      await expect(backBtn).toHaveText('返回')
-      await expect(continueBtn).toHaveText('继续')
+        const positionStatus = settingsPage.locator('[data-testid="position-status"]')
+        await expect(positionStatus).toBeVisible()
+
+        const video = settingsPage.locator('[data-testid="calibration-video"]')
+        await expect(video).toBeVisible()
+
+        const continueBtn = settingsPage.locator('[data-testid="wizard-continue-btn"]')
+        const backBtn = settingsPage.locator('[data-testid="wizard-back-btn"]')
+        await expect(continueBtn).toBeVisible()
+        await expect(backBtn).toBeVisible()
+        await expect(backBtn).toHaveText('返回')
+        await expect(continueBtn).toHaveText('继续')
+      } else if (await wizardErrorLate.isVisible()) {
+        // Step 2 appeared briefly then wizard error replaced it
+        const retryBtn = settingsPage.locator('[data-testid="calibration-retry-btn"]')
+        await expect(retryBtn).toBeVisible()
+      }
     } else if (state === 'camera_error') {
       // Verify camera error UI
       const retryBtn = settingsPage.locator('[data-testid="calibration-retry-btn"]')

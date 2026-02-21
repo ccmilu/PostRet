@@ -299,6 +299,138 @@ describe('useCalibrationWizard', () => {
     })
   })
 
+  describe('detector reuse', () => {
+    it('reuses existing detector when going step2 → step1 → step2', async () => {
+      const videoRef = createMockVideoRef()
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      // First go to step 2 (initializes detector)
+      await act(async () => {
+        result.current.goToStep2()
+      })
+      expect(mockInitialize).toHaveBeenCalledTimes(1)
+
+      // Go back to step 1
+      await act(async () => {
+        result.current.goBackToStep1()
+      })
+
+      // Go to step 2 again — should reuse the detector
+      await act(async () => {
+        result.current.goToStep2()
+      })
+
+      // isReady returns true, so init should not be called again
+      expect(mockInitialize).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('position check with no video', () => {
+    it('skips detection when video readyState < 2', async () => {
+      const video = document.createElement('video')
+      Object.defineProperty(video, 'readyState', { value: 0, writable: true })
+      const videoRef = { current: video }
+
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      await act(async () => {
+        result.current.goToStep2()
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      // detect should not have been called because readyState < 2
+      expect(mockDetect).not.toHaveBeenCalled()
+      expect(result.current.positionResult.status).toBe('no_face')
+    })
+
+    it('skips detection when videoRef is null', async () => {
+      const videoRef = { current: null }
+
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      await act(async () => {
+        result.current.goToStep2()
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      expect(mockDetect).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('position check resets canContinue on bad position', () => {
+    it('resets canContinue when face goes from good to bad', async () => {
+      // Start with good detection
+      const goodLandmarks = Array.from({ length: 33 }, () => ({
+        x: 0.5, y: 0.5, z: 0, visibility: 0.9,
+      }))
+      goodLandmarks[7] = { x: 0.425, y: 0.45, z: 0, visibility: 0.9 }
+      goodLandmarks[8] = { x: 0.575, y: 0.45, z: 0, visibility: 0.9 }
+
+      mockDetect.mockReturnValue({
+        landmarks: goodLandmarks,
+        worldLandmarks: goodLandmarks,
+        timestamp: performance.now(),
+        frameWidth: 640,
+        frameHeight: 480,
+      })
+
+      const videoRef = createMockVideoRef()
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      await act(async () => {
+        result.current.goToStep2()
+      })
+
+      // Hold good position
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000)
+      })
+      expect(result.current.canContinue).toBe(true)
+
+      // Now face disappears
+      mockDetect.mockReturnValue(null)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      expect(result.current.canContinue).toBe(false)
+      expect(result.current.positionResult.status).toBe('no_face')
+    })
+  })
+
+  describe('generation counter prevents stale updates', () => {
+    it('ignores stale position check results after going back', async () => {
+      const videoRef = createMockVideoRef()
+      const { result } = renderHook(() => useCalibrationWizard({ videoRef }))
+
+      await act(async () => {
+        result.current.goToStep2()
+      })
+      expect(result.current.step).toBe(2)
+
+      // Go back to step 1 (increments generation)
+      await act(async () => {
+        result.current.goBackToStep1()
+      })
+      expect(result.current.step).toBe(1)
+
+      // Stale timer ticks should not affect state
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      // Step should still be 1
+      expect(result.current.step).toBe(1)
+    })
+  })
+
   describe('error handling', () => {
     it('sets error when detector initialization fails', async () => {
       mockInitialize.mockRejectedValue(new Error('WASM 加载失败'))
