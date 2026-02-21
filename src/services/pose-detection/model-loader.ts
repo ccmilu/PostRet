@@ -15,8 +15,12 @@ export function getModelPath(): string {
 }
 
 export function getWasmPath(): string {
-  // CDN for initial development; production should use local WASM
-  return 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm';
+  if (import.meta.env.DEV) {
+    // Dev: served by Vite middleware from node_modules/@mediapipe/tasks-vision/wasm/
+    return '/wasm';
+  }
+  // Production: bundled WASM files
+  return 'wasm';
 }
 
 export async function checkModelExists(): Promise<boolean> {

@@ -8,6 +8,43 @@ import {
 } from './pose-types'
 import { getModelPath, getWasmPath } from './model-loader'
 
+/**
+ * Extract a human-readable message from various error types.
+ * MediaPipe WASM/model loading failures often throw Event objects
+ * (e.g. from onerror handlers) which serialize as "[object Event]".
+ */
+function formatInitError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  // DOM Event objects (e.g. from script/fetch onerror)
+  if (typeof error === 'object' && error !== null) {
+    const obj = error as Record<string, unknown>
+
+    // ErrorEvent has a `message` property
+    if (typeof obj.message === 'string' && obj.message.length > 0) {
+      return obj.message
+    }
+
+    // Event from a failed resource load (script, fetch)
+    if (typeof obj.type === 'string') {
+      const target = obj.target as Record<string, unknown> | undefined
+      const src = target?.src ?? target?.href ?? ''
+      return src
+        ? `资源加载失败 (${obj.type}): ${String(src)}`
+        : `资源加载失败 (${obj.type})`
+    }
+  }
+
+  // Fallback for strings and other primitives
+  const str = String(error)
+  if (str === '[object Object]' || str === '[object Event]') {
+    return 'WASM 或模型文件加载失败，请检查网络连接和文件路径'
+  }
+  return str
+}
+
 export interface PoseDetector {
   /** 初始化 PoseLandmarker（加载模型和 WASM） */
   initialize(): Promise<void>
@@ -56,7 +93,7 @@ export function createPoseDetector(
       } catch (error) {
         ready = false
         throw new Error(
-          `PoseDetector 初始化失败: ${error instanceof Error ? error.message : String(error)}`,
+          `PoseDetector 初始化失败: ${formatInitError(error)}`,
         )
       }
     },

@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
-import { resolve } from 'path'
+import { resolve, extname } from 'path'
 import { createReadStream, existsSync } from 'fs'
 
 /**
@@ -26,10 +26,47 @@ function serveModelsPlugin(): Plugin {
   };
 }
 
+/**
+ * Serve @mediapipe/tasks-vision WASM files at /wasm/ during development.
+ * This avoids CSP issues with loading WASM from CDN and improves reliability.
+ */
+function serveWasmPlugin(): Plugin {
+  return {
+    name: 'serve-wasm',
+    configureServer(server) {
+      server.middlewares.use('/wasm', (req, res, next) => {
+        const fileName = req.url!.replace(/^\//, '');
+        const filePath = resolve(
+          __dirname,
+          'node_modules',
+          '@mediapipe',
+          'tasks-vision',
+          'wasm',
+          fileName,
+        );
+        if (existsSync(filePath)) {
+          const ext = extname(filePath);
+          const mimeType =
+            ext === '.js'
+              ? 'application/javascript'
+              : ext === '.wasm'
+                ? 'application/wasm'
+                : 'application/octet-stream';
+          res.setHeader('Content-Type', mimeType);
+          createReadStream(filePath).pipe(res);
+        } else {
+          next();
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     serveModelsPlugin(),
+    serveWasmPlugin(),
     electron([
       {
         entry: 'electron/main.ts',

@@ -30,10 +30,9 @@ describe('pose-detection integration', () => {
       expect(path).toContain('.task')
     })
 
-    it('WASM path points to mediapipe CDN', async () => {
+    it('WASM path points to local wasm directory', async () => {
       const { getWasmPath } = await import('@/services/pose-detection/model-loader')
       const path = getWasmPath()
-      expect(path).toContain('mediapipe')
       expect(path).toContain('wasm')
     })
   })

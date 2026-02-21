@@ -23,12 +23,18 @@ describe('model-loader', () => {
   });
 
   describe('getWasmPath', () => {
-    it('returns CDN URL for WASM files', async () => {
+    it('returns local /wasm path in dev mode', async () => {
+      vi.stubEnv('DEV', 'true');
       const { getWasmPath } = await import('@/services/pose-detection/model-loader');
       const path = getWasmPath();
-      expect(path).toContain('cdn.jsdelivr.net');
-      expect(path).toContain('@mediapipe/tasks-vision');
-      expect(path).toContain('/wasm');
+      expect(path).toBe('/wasm');
+    });
+
+    it('returns relative wasm path in production mode', async () => {
+      vi.stubEnv('DEV', '');
+      const { getWasmPath } = await import('@/services/pose-detection/model-loader');
+      const path = getWasmPath();
+      expect(path).toBe('wasm');
     });
   });
 

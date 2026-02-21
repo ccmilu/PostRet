@@ -18,7 +18,7 @@ vi.mock('@mediapipe/tasks-vision', () => ({
 // Mock model-loader
 vi.mock('@/services/pose-detection/model-loader', () => ({
   getModelPath: () => '/models/pose_landmarker_full.task',
-  getWasmPath: () => 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+  getWasmPath: () => '/wasm',
 }))
 
 import { createPoseDetector } from '@/services/pose-detection/pose-detector'
@@ -78,9 +78,7 @@ describe('pose-detector', () => {
     it('calls FilesetResolver.forVisionTasks with WASM path', async () => {
       const detector = createPoseDetector()
       await detector.initialize()
-      expect(mockForVisionTasks).toHaveBeenCalledWith(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
-      )
+      expect(mockForVisionTasks).toHaveBeenCalledWith('/wasm')
     })
 
     it('calls PoseLandmarker.createFromOptions with correct config', async () => {
@@ -125,18 +123,48 @@ describe('pose-detector', () => {
       )
     })
 
-    it('throws error when FilesetResolver fails', async () => {
+    it('throws error with message when FilesetResolver fails with Error', async () => {
       mockForVisionTasks.mockRejectedValue(new Error('WASM load failed'))
       const detector = createPoseDetector()
-      await expect(detector.initialize()).rejects.toThrow('PoseDetector 初始化失败')
+      await expect(detector.initialize()).rejects.toThrow('PoseDetector 初始化失败: WASM load failed')
       expect(detector.isReady()).toBe(false)
     })
 
     it('throws error when PoseLandmarker.createFromOptions fails', async () => {
       mockCreateFromOptions.mockRejectedValue(new Error('Model load failed'))
       const detector = createPoseDetector()
-      await expect(detector.initialize()).rejects.toThrow('PoseDetector 初始化失败')
+      await expect(detector.initialize()).rejects.toThrow('PoseDetector 初始化失败: Model load failed')
       expect(detector.isReady()).toBe(false)
+    })
+
+    it('produces human-readable error when Event object is thrown', async () => {
+      // Simulate what happens when WASM onerror fires — throws an Event-like object
+      const eventLikeError = { type: 'error', target: { src: 'https://example.com/wasm/vision.js' } }
+      mockForVisionTasks.mockRejectedValue(eventLikeError)
+      const detector = createPoseDetector()
+      await expect(detector.initialize()).rejects.toThrow('资源加载失败 (error): https://example.com/wasm/vision.js')
+    })
+
+    it('produces human-readable error when Event object without target.src is thrown', async () => {
+      const eventLikeError = { type: 'error' }
+      mockForVisionTasks.mockRejectedValue(eventLikeError)
+      const detector = createPoseDetector()
+      await expect(detector.initialize()).rejects.toThrow('资源加载失败 (error)')
+    })
+
+    it('produces human-readable error when ErrorEvent with message is thrown', async () => {
+      const errorEvent = { type: 'error', message: 'Script error.' }
+      mockForVisionTasks.mockRejectedValue(errorEvent)
+      const detector = createPoseDetector()
+      await expect(detector.initialize()).rejects.toThrow('PoseDetector 初始化失败: Script error.')
+    })
+
+    it('produces fallback error for opaque [object Event] strings', async () => {
+      // Object whose String() produces [object Event]
+      const opaqueObj = { toString: () => '[object Event]' }
+      mockForVisionTasks.mockRejectedValue(opaqueObj)
+      const detector = createPoseDetector()
+      await expect(detector.initialize()).rejects.toThrow('WASM 或模型文件加载失败，请检查网络连接和文件路径')
     })
   })
 
