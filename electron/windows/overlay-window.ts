@@ -72,13 +72,13 @@ function selectVibrancyForSupport(support: VibrancySupport): VibrancyType | unde
   }
 }
 
-function getPrimaryDisplayBounds(): DisplayBounds {
-  const { bounds } = screen.getPrimaryDisplay()
+function getPrimaryDisplayWorkArea(): DisplayBounds {
+  const { workArea } = screen.getPrimaryDisplay()
   return {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+    x: workArea.x,
+    y: workArea.y,
+    width: workArea.width,
+    height: workArea.height,
   }
 }
 
@@ -171,7 +171,7 @@ export class OverlayWindow {
   }
 
   private createWindow(): void {
-    const bounds = getPrimaryDisplayBounds()
+    const bounds = getPrimaryDisplayWorkArea()
     const support = detectMacOSVibrancySupport()
 
     // Three-tier blur strategy:
@@ -206,7 +206,6 @@ export class OverlayWindow {
       minimizable: false,
       maximizable: false,
       fullscreenable: false,
-      enableLargerThanScreen: true,
       ...(constructorVibrancy ? { vibrancy: constructorVibrancy, visualEffectState: 'active' as const } : {}),
       webPreferences: {
         contextIsolation: true,
@@ -220,8 +219,9 @@ export class OverlayWindow {
       this.effectType = 'vibrancy'
     }
 
-    // 'screen-saver' level sits above menubar/Dock, ensuring full-screen coverage.
-    this.window.setAlwaysOnTop(true, 'screen-saver')
+    // 'floating' level stays above normal windows but below system notifications
+    // and does not cover the menubar/Dock.
+    this.window.setAlwaysOnTop(true, 'floating')
     this.window.setIgnoreMouseEvents(true)
 
     // Body must have content for vibrancy/glass to render on.
@@ -230,10 +230,6 @@ export class OverlayWindow {
 
     this.window.once('ready-to-show', () => {
       this.window?.show()
-      // Force position after show — macOS pushes windows into workArea;
-      // re-applying display.bounds overrides that constraint.
-      this.window?.setPosition(bounds.x, bounds.y, false)
-      this.window?.setSize(bounds.width, bounds.height, false)
 
       // Apply Liquid Glass after window is shown and positioned
       if (shouldTryLiquidGlass && this.window && !this.window.isDestroyed()) {

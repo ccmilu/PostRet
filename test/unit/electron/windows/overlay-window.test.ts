@@ -42,6 +42,7 @@ vi.mock('electron', () => ({
   screen: {
     getPrimaryDisplay: () => ({
       bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+      workArea: { x: 0, y: 25, width: 1920, height: 1055 },
     }),
   },
 }))
@@ -180,7 +181,6 @@ describe('OverlayWindow', () => {
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.transparent).toBe(true)
       expect(config.frame).toBe(false)
-      expect(config.enableLargerThanScreen).toBe(true)
       expect(config.skipTaskbar).toBe(true)
       expect(config.hasShadow).toBe(false)
       expect(config.focusable).toBe(false)
@@ -188,18 +188,18 @@ describe('OverlayWindow', () => {
       expect(config.movable).toBe(false)
       // alwaysOnTop with 'screen-saver' level is set via setAlwaysOnTop() after construction
       const mockInstance = MockBrowserWindow.mock.results[0].value
-      expect(mockInstance.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver')
+      expect(mockInstance.setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating')
     })
 
-    it('sets window to primary display bounds', () => {
+    it('sets window to primary display workArea (excludes menubar)', () => {
       const overlay = new OverlayWindow()
       overlay.show()
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.x).toBe(0)
-      expect(config.y).toBe(0)
+      expect(config.y).toBe(25)
       expect(config.width).toBe(1920)
-      expect(config.height).toBe(1080)
+      expect(config.height).toBe(1055)
     })
 
     it('calls setIgnoreMouseEvents(true) for click-through', () => {
@@ -304,6 +304,24 @@ describe('OverlayWindow', () => {
       expect(config.webPreferences.contextIsolation).toBe(true)
       expect(config.webPreferences.nodeIntegration).toBe(false)
       expect(config.webPreferences.sandbox).toBe(true)
+    })
+
+    it('uses floating level so system notifications remain visible', () => {
+      const mockInstance = createMockBrowserWindow()
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      expect(mockInstance.setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating')
+    })
+
+    it('does not set enableLargerThanScreen (workArea already fits)', () => {
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      expect(config.enableLargerThanScreen).toBeUndefined()
     })
   })
 
