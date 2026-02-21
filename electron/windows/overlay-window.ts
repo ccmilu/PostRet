@@ -7,6 +7,8 @@ export type VibrancyType = 'under-window' | 'fullscreen-ui' | 'hud' | 'sidebar'
 
 export type VibrancySupport = 'modern' | 'legacy' | 'unsupported'
 
+export type EffectType = 'liquid-glass' | 'vibrancy' | 'transparent'
+
 export interface OverlayWindowOptions {
   readonly vibrancyType?: VibrancyType
   readonly disableLiquidGlass?: boolean
@@ -53,12 +55,21 @@ export function parseDarwinMajorVersion(releaseString: string): number | null {
   return Number.isFinite(major) ? major : null
 }
 
-// macOS 13-15 fallback: Electron built-in vibrancy (NSVisualEffectView)
-function selectLegacyVibrancy(support: VibrancySupport): VibrancyType | undefined {
-  if (support === 'legacy') {
-    return 'under-window'
+/**
+ * Select vibrancy type for legacy macOS (13-15) or as fallback for modern macOS.
+ * - modern (macOS 26+): 'fullscreen-ui' (used as Liquid Glass fallback)
+ * - legacy (macOS 13-15): 'under-window'
+ * - unsupported: undefined (transparent only)
+ */
+function selectVibrancyForSupport(support: VibrancySupport): VibrancyType | undefined {
+  switch (support) {
+    case 'modern':
+      return 'fullscreen-ui'
+    case 'legacy':
+      return 'under-window'
+    case 'unsupported':
+      return undefined
   }
-  return undefined
 }
 
 function getPrimaryDisplayBounds(): DisplayBounds {
@@ -97,6 +108,7 @@ export class OverlayWindow {
   private readonly vibrancyOverride: VibrancyType | undefined
   private readonly disableLiquidGlass: boolean
   private liquidGlassViewId: number = -1
+  private effectType: EffectType = 'transparent'
 
   constructor(options?: OverlayWindowOptions) {
     this.vibrancyOverride = options?.vibrancyType
@@ -139,6 +151,11 @@ export class OverlayWindow {
     return this.window !== null && !this.window.isDestroyed()
   }
 
+  /** Returns the actual blur effect currently in use. */
+  getEffectType(): EffectType {
+    return this.effectType
+  }
+
   destroy(): void {
     if (this.window && !this.window.isDestroyed()) {
       this.window.removeAllListeners()
@@ -146,6 +163,7 @@ export class OverlayWindow {
     }
     this.window = null
     this.liquidGlassViewId = -1
+    this.effectType = 'transparent'
   }
 
   getWindow(): BrowserWindow | null {
@@ -156,16 +174,21 @@ export class OverlayWindow {
     const bounds = getPrimaryDisplayBounds()
     const support = detectMacOSVibrancySupport()
 
-    // Determine blur strategy:
-    // - macOS 26+ (no override): try Liquid Glass (NSGlassEffectView), fall back to vibrancy
-    // - macOS 13-15 or explicit override: use built-in vibrancy (NSVisualEffectView)
-    // - Liquid Glass and vibrancy must NOT be used simultaneously
-    const useLiquidGlass = support === 'modern'
+    // Three-tier blur strategy:
+    // 1. macOS 26+ (no vibrancy override): try Liquid Glass (NSGlassEffectView)
+    // 2. Fallback / macOS 13-15 / explicit override: vibrancy (NSVisualEffectView)
+    // 3. Unsupported platforms: transparent window (no blur)
+    //
+    // Liquid Glass and vibrancy must NOT be used simultaneously on the same window.
+    const shouldTryLiquidGlass = support === 'modern'
       && !this.disableLiquidGlass
       && this.vibrancyOverride === undefined
-    const vibrancy = useLiquidGlass
+
+    // When trying Liquid Glass, don't set vibrancy in constructor — it will be
+    // applied in ready-to-show, with vibrancy as fallback if LG fails.
+    const constructorVibrancy = shouldTryLiquidGlass
       ? undefined
-      : (this.vibrancyOverride ?? selectLegacyVibrancy(support))
+      : (this.vibrancyOverride ?? selectVibrancyForSupport(support))
 
     this.window = new BrowserWindow({
       x: bounds.x,
@@ -184,13 +207,18 @@ export class OverlayWindow {
       maximizable: false,
       fullscreenable: false,
       enableLargerThanScreen: true,
-      ...(vibrancy ? { vibrancy, visualEffectState: 'active' } : {}),
+      ...(constructorVibrancy ? { vibrancy: constructorVibrancy, visualEffectState: 'active' as const } : {}),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
       },
     })
+
+    // Track effect type based on constructor vibrancy
+    if (constructorVibrancy) {
+      this.effectType = 'vibrancy'
+    }
 
     // 'screen-saver' level sits above menubar/Dock, ensuring full-screen coverage.
     this.window.setAlwaysOnTop(true, 'screen-saver')
@@ -208,34 +236,63 @@ export class OverlayWindow {
       this.window?.setSize(bounds.width, bounds.height, false)
 
       // Apply Liquid Glass after window is shown and positioned
-      if (useLiquidGlass && this.window && !this.window.isDestroyed()) {
-        this.applyLiquidGlass()
+      if (shouldTryLiquidGlass && this.window && !this.window.isDestroyed()) {
+        this.applyLiquidGlass(support)
       }
     })
 
     this.window.on('closed', () => {
       this.window = null
       this.liquidGlassViewId = -1
+      this.effectType = 'transparent'
     })
   }
 
-  private applyLiquidGlass(): void {
-    const lg = tryLoadLiquidGlass()
-    if (!lg || !lg.isGlassSupported() || !this.window) {
-      // Liquid Glass unavailable — fall back to vibrancy on this window
-      this.window?.setVibrancy('fullscreen-ui')
-      return
-    }
-
+  /**
+   * Attempt Liquid Glass (tier 1). On any failure, fall back to vibrancy (tier 2).
+   * Catches all exceptions to ensure the overlay window always displays.
+   */
+  private applyLiquidGlass(support: VibrancySupport): void {
     try {
+      const lg = tryLoadLiquidGlass()
+
+      if (!lg) {
+        console.warn('[overlay] electron-liquid-glass module not found, falling back to vibrancy')
+        this.fallbackToVibrancy(support)
+        return
+      }
+
+      if (!lg.isGlassSupported()) {
+        console.warn('[overlay] Liquid Glass not supported on this system, falling back to vibrancy')
+        this.fallbackToVibrancy(support)
+        return
+      }
+
+      if (!this.window || this.window.isDestroyed()) {
+        return
+      }
+
       const handle = this.window.getNativeWindowHandle()
       this.liquidGlassViewId = lg.addView(handle, {
         cornerRadius: 0,
       })
+      this.effectType = 'liquid-glass'
     } catch (err) {
-      // Native module failed — fall back to vibrancy
-      console.error('Liquid Glass failed, falling back to vibrancy:', err)
-      this.window?.setVibrancy('fullscreen-ui')
+      console.warn('[overlay] Liquid Glass failed, falling back to vibrancy:', err)
+      this.fallbackToVibrancy(support)
     }
+  }
+
+  /** Tier 2 fallback: apply vibrancy (NSVisualEffectView) to the existing window. */
+  private fallbackToVibrancy(support: VibrancySupport): void {
+    if (!this.window || this.window.isDestroyed()) {
+      return
+    }
+    const vibrancy = selectVibrancyForSupport(support)
+    if (vibrancy) {
+      this.window.setVibrancy(vibrancy)
+      this.effectType = 'vibrancy'
+    }
+    // If no vibrancy available (unsupported), effectType stays 'transparent' (tier 3)
   }
 }

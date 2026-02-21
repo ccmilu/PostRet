@@ -5,7 +5,7 @@
 - 姿态检测: MediaPipe JS (@mediapipe/tasks-vision) — 33 关键点+3D, 纯 WASM
 - 屏幕模糊: macOS 26+ Liquid Glass 毛玻璃效果, macOS 13-15 系统级模糊效果（具体实现方案由开发时调研决定，优先使用系统原生 API）
 - 持久化: electron-store
-- 测试: Vitest (单元/集成) + Playwright (E2E, 原生 Electron 支持) + Playwright MCP (UI/视觉验证)
+- 测试: Vitest (单元/集成) + Playwright (E2E, 原生 Electron 支持) + Agent Browser (UI/视觉验证)
 - 包管理: npm
 
 ## 项目结构
@@ -157,20 +157,20 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 
 1. **编写代码** — 实现功能模块
 2. **单元测试** — 对纯逻辑代码（utils, services）编写并运行 Vitest 单元测试
-3. **MCP 探索验证** — 通过 Playwright MCP 交互式操控应用，验证功能在实际界面中是否正常工作。用截图+AI 视觉判断视觉效果。**UI/视觉功能必须执行此步骤**
-4. **修复问题** — 如果 MCP 验证发现问题，修复后回到步骤 3
-5. **固化 E2E 脚本** — MCP 验证通过后，将操作步骤编写为 .spec.ts Playwright 测试脚本
+3. **Agent Browser 探索验证** — 通过 Agent Browser (agent-browser skill) 交互式操控应用，验证功能在实际界面中是否正常工作。用截图+AI 视觉判断视觉效果。**UI/视觉功能必须执行此步骤**。注意：Agent Browser 基于 Bash 命令行调用，teammate 也可使用。
+4. **修复问题** — 如果验证发现问题，修复后回到步骤 3
+5. **固化 E2E 脚本** — 验证通过后，将操作步骤编写为 .spec.ts Playwright 测试脚本
 6. **运行全量测试** — `npm test`（单元+集成+E2E），确认无回归
 7. **Git 提交** — 功能 + 测试一起提交
 
 核心算法（angle-calculator, posture-rules, smoothing）采用 TDD：先写测试再写实现。
 每完成一个 Phase 的功能，对照该 Phase 的"测试 & 验收"清单逐条确认。
 
-## Playwright MCP 强制规则
+## Agent Browser 强制规则
 
-**所有涉及 UI 或视觉效果的功能，必须先通过 Playwright MCP 交互式验证，再编写自动化测试脚本。** 这是强制要求，不可跳过。
+**所有涉及 UI 或视觉效果的功能，必须先通过 Agent Browser 交互式验证，再编写自动化测试脚本。** 这是强制要求，不可跳过。Agent Browser 通过 `agent-browser` skill 调用，基于 Bash 命令行，主会话和 teammate 均可使用。
 
-必须使用 MCP 验证的场景（不限于此列表）：
+必须使用 Agent Browser 验证的场景（不限于此列表）：
 - 模糊覆盖窗口的视觉效果（Liquid Glass / 普通模糊）
 - 模糊的出现和渐变消除动画
 - 骨骼线叠加显示
@@ -179,7 +179,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 - Tray 菜单的显示和交互
 - 系统通知的弹出
 
-可以跳过 MCP、直接写脚本的场景：
+可以跳过 Agent Browser、直接写脚本的场景：
 - 纯数据逻辑（IPC 通信、配置读写、数值计算）
 - 无 UI 的单元测试
 

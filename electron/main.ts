@@ -113,6 +113,42 @@ app.whenReady().then(() => {
       settingsWindow?.destroy()
       overlayWindow?.destroy()
     },
+    // Phase 1.5: blur & reminder test hooks
+    activateBlur: () => blurController?.activate(),
+    deactivateBlur: () => blurController?.deactivate(),
+    getBlurState: () => blurController?.getState(),
+    isOverlayVisible: () => overlayWindow?.isVisible(),
+    getOverlayOpacity: () => overlayWindow?.getOpacity(),
+    triggerNotification: () => {
+      const sender = createNotificationSender({
+        createNotification: (opts) => new Notification(opts),
+        minIntervalMs: 0,
+      })
+      sender.send([{ rule: 'FORWARD_HEAD' as const, severity: 0.8, message: '头部前倾' }])
+    },
+    triggerSound: () => {
+      exec('afplay /System/Library/Sounds/Tink.aiff', (err) => {
+        if (err) console.error('Sound test failed:', err.message)
+      })
+    },
+    // Reminder manager test hooks
+    getReminderState: () => reminderManager?.getState(),
+    simulateBadPosture: () => {
+      reminderManager?.onPostureUpdate({
+        isGood: false,
+        violations: [{ rule: 'FORWARD_HEAD' as const, severity: 0.8, message: '头部前倾' }],
+        confidence: 0.9,
+        timestamp: Date.now(),
+      })
+    },
+    simulateGoodPosture: () => {
+      reminderManager?.onPostureUpdate({
+        isGood: true,
+        violations: [],
+        confidence: 0.9,
+        timestamp: Date.now(),
+      })
+    },
   }
 })
 

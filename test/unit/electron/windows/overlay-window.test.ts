@@ -15,6 +15,8 @@ const { mockRelease, MockBrowserWindow, createMockBrowserWindow } = vi.hoisted((
       setPosition: vi.fn(),
       setSize: vi.fn(),
       setBounds: vi.fn(),
+      setVibrancy: vi.fn(),
+      getNativeWindowHandle: vi.fn().mockReturnValue(Buffer.alloc(8)),
       loadURL: vi.fn().mockResolvedValue(undefined),
       isDestroyed: vi.fn().mockReturnValue(false),
       isVisible: vi.fn().mockReturnValue(false),
@@ -45,6 +47,24 @@ vi.mock('os', () => ({
   default: { release: () => mockRelease() },
   release: () => mockRelease(),
 }))
+
+// Mock module/path — createRequire returns a function that always throws
+// (simulates electron-liquid-glass not being loadable in test env)
+vi.mock('module', () => {
+  const createRequire = () => () => { throw new Error('module not found in test') }
+  return {
+    default: { createRequire },
+    createRequire,
+  }
+})
+
+vi.mock('path', () => {
+  const join = (...args: string[]) => args.join('/')
+  return {
+    default: { join },
+    join,
+  }
+})
 
 import {
   OverlayWindow,
@@ -140,6 +160,11 @@ describe('OverlayWindow', () => {
       const overlay = new OverlayWindow({ vibrancyType: 'hud' })
       expect(overlay).toBeInstanceOf(OverlayWindow)
     })
+
+    it('creates instance with disableLiquidGlass', () => {
+      const overlay = new OverlayWindow({ disableLiquidGlass: true })
+      expect(overlay).toBeInstanceOf(OverlayWindow)
+    })
   })
 
   describe('show', () => {
@@ -216,7 +241,7 @@ describe('OverlayWindow', () => {
       const overlay = new OverlayWindow()
       overlay.show()
 
-      // On macOS 26+, vibrancy is not set in constructor — Liquid Glass is applied
+      // On macOS 26+, vibrancy is not set in constructor — Liquid Glass is attempted
       // in the ready-to-show callback, with vibrancy as fallback if LG fails.
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBeUndefined()
@@ -246,12 +271,24 @@ describe('OverlayWindow', () => {
       expect(config.visualEffectState).toBeUndefined()
     })
 
-    it('uses vibrancy override when provided', () => {
+    it('uses vibrancy override when provided (bypasses Liquid Glass)', () => {
       const overlay = new OverlayWindow({ vibrancyType: 'hud' })
       overlay.show()
 
       const config = MockBrowserWindow.mock.calls[0][0]
       expect(config.vibrancy).toBe('hud')
+      expect(config.visualEffectState).toBe('active')
+    })
+
+    it('uses vibrancy when disableLiquidGlass is true on modern macOS', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const overlay = new OverlayWindow({ disableLiquidGlass: true })
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      expect(config.vibrancy).toBe('fullscreen-ui')
       expect(config.visualEffectState).toBe('active')
     })
 
@@ -385,6 +422,207 @@ describe('OverlayWindow', () => {
     it('returns false before window is created', () => {
       const overlay = new OverlayWindow()
       expect(overlay.isCreated()).toBe(false)
+    })
+  })
+
+  describe('getEffectType', () => {
+    it('returns "transparent" before window is created', () => {
+      const overlay = new OverlayWindow()
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('returns "vibrancy" on legacy macOS after show', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('23.1.0')
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('returns "vibrancy" when vibrancy override is provided', () => {
+      const overlay = new OverlayWindow({ vibrancyType: 'hud' })
+      overlay.show()
+
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('returns "vibrancy" when disableLiquidGlass is true on modern macOS', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const overlay = new OverlayWindow({ disableLiquidGlass: true })
+      overlay.show()
+
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('returns "transparent" on unsupported platforms after show', () => {
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('resets to "transparent" after destroy', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('23.1.0')
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+      expect(overlay.getEffectType()).toBe('vibrancy')
+
+      overlay.destroy()
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('resets to "transparent" when closed event fires', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('23.1.0')
+
+      const mockInstance = createMockBrowserWindow()
+      let closedCallback: (() => void) | undefined
+      mockInstance.on.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'closed') {
+          closedCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+      expect(overlay.getEffectType()).toBe('vibrancy')
+
+      closedCallback!()
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+  })
+
+  describe('three-tier degradation', () => {
+    it('tier 1: attempts Liquid Glass on modern macOS (no vibrancy in constructor)', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      // Vibrancy not set — Liquid Glass is attempted in ready-to-show
+      expect(config.vibrancy).toBeUndefined()
+      // In test env, LG module is not loadable, so effectType is still 'transparent'
+      // (ready-to-show callback hasn't fired — it's registered with once())
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('tier 1→2: falls back to vibrancy when Liquid Glass module unavailable', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const mockInstance = createMockBrowserWindow()
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      // Simulate ready-to-show firing — LG module will fail, triggering fallback
+      readyCallback!()
+
+      // Should have fallen back to vibrancy
+      expect(mockInstance.setVibrancy).toHaveBeenCalledWith('fullscreen-ui')
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('tier 2: uses vibrancy directly on legacy macOS', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('23.1.0')
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      expect(config.vibrancy).toBe('under-window')
+      expect(config.visualEffectState).toBe('active')
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('tier 3: transparent window on unsupported platforms', () => {
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      expect(config.vibrancy).toBeUndefined()
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('tier 3: transparent window on old macOS', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('21.0.0')
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      const config = MockBrowserWindow.mock.calls[0][0]
+      expect(config.vibrancy).toBeUndefined()
+      expect(overlay.getEffectType()).toBe('transparent')
+    })
+
+    it('does not crash if Liquid Glass throws during addView', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const mockInstance = createMockBrowserWindow()
+      // Simulate getNativeWindowHandle throwing
+      mockInstance.getNativeWindowHandle.mockImplementation(() => {
+        throw new Error('handle unavailable')
+      })
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+
+      // Even if LG load fails and getNativeWindowHandle throws,
+      // the window should still be usable with vibrancy fallback
+      expect(() => readyCallback!()).not.toThrow()
+      expect(overlay.getEffectType()).toBe('vibrancy')
+    })
+
+    it('overlay window always shows regardless of effect failures', () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      mockRelease.mockReturnValue('25.3.0')
+
+      const mockInstance = createMockBrowserWindow()
+      let readyCallback: (() => void) | undefined
+      mockInstance.once.mockImplementation((event: string, cb: () => void) => {
+        if (event === 'ready-to-show') {
+          readyCallback = cb
+        }
+      })
+      MockBrowserWindow.mockImplementation(function () { return mockInstance })
+
+      const overlay = new OverlayWindow()
+      overlay.show()
+      readyCallback!()
+
+      // Window was shown despite LG failure
+      expect(mockInstance.show).toHaveBeenCalled()
+      expect(overlay.isCreated()).toBe(true)
     })
   })
 
