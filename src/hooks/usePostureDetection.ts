@@ -86,6 +86,8 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   const detectionSettingsRef = useRef<DetectionSettings | null>(null)
   const stateRef = useRef<DetectionState>('idle')
   const initializingRef = useRef(false)
+  // Incremented on every stop() to signal in-flight start() to abort
+  const stopGenerationRef = useRef(0)
 
   // Keep stateRef in sync so interval callbacks see current state
   stateRef.current = state
@@ -166,6 +168,9 @@ export function usePostureDetection(): UsePostureDetectionReturn {
       releaseResources()
 
       initializingRef.current = true
+      // Capture the current generation so we can detect if stop() was called
+      // while we were awaiting async operations below.
+      const generation = stopGenerationRef.current
       setState('initializing')
       setError(null)
       detectionSettingsRef.current = detection
@@ -182,6 +187,12 @@ export function usePostureDetection(): UsePostureDetectionReturn {
           setError(message)
           return
         }
+
+        // Check if stop() was called while we were acquiring camera
+        if (stopGenerationRef.current !== generation) {
+          stopMediaStream(stream)
+          return
+        }
         streamRef.current = stream
 
         // Step 2: Create hidden video element and start playback
@@ -189,12 +200,23 @@ export function usePostureDetection(): UsePostureDetectionReturn {
         videoRef.current = video
         await video.play()
 
+        // Check if stop() was called while video was starting
+        if (stopGenerationRef.current !== generation) {
+          return
+        }
+
         // Note: video.readyState is checked in each detection frame,
         // so we don't block here waiting for video data.
 
         // Step 3: Initialize PoseDetector
         const detector = createPoseDetector()
         await detector.initialize()
+
+        // Check if stop() was called while detector was initializing
+        if (stopGenerationRef.current !== generation) {
+          detector.destroy()
+          return
+        }
         detectorRef.current = detector
 
         // Step 4: Create PostureAnalyzer
@@ -210,18 +232,24 @@ export function usePostureDetection(): UsePostureDetectionReturn {
         setState('detecting')
         startDetectionLoop(detection.intervalMs)
       } catch (err) {
-        initializingRef.current = false
-        releaseResources()
-        setState('error')
-        const message =
-          err instanceof Error ? err.message : 'Detection initialization failed'
-        setError(message)
+        // Only update state if we haven't been stopped in the meantime
+        if (stopGenerationRef.current === generation) {
+          initializingRef.current = false
+          releaseResources()
+          setState('error')
+          const message =
+            err instanceof Error ? err.message : 'Detection initialization failed'
+          setError(message)
+        }
       }
     },
     [releaseResources, startDetectionLoop],
   )
 
   const stop = useCallback(() => {
+    // Signal any in-flight start() to abort after its next await
+    stopGenerationRef.current += 1
+    initializingRef.current = false
     releaseResources()
     setState('idle')
     setLastStatus(null)

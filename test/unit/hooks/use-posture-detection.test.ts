@@ -992,6 +992,92 @@ describe('usePostureDetection', () => {
       }
     })
 
+    it('should abort in-flight start() when stop() is called during initialization', async () => {
+      // Make initialize take a long time so we can call stop() mid-init
+      let resolveInit: (() => void) | null = null
+      ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return new Promise<void>((resolve) => {
+          resolveInit = resolve
+        })
+      })
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      // Fire start() — it will progress through camera/video (resolved instantly)
+      // and then block at detector.initialize()
+      let startPromise: Promise<void> | null = null
+      act(() => {
+        startPromise = result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // Flush microtasks so start() progresses past the resolved promises
+      // (camera, video.play) and reaches the deferred detector.initialize()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+      // Confirm we're in initializing state and the detector was created
+      expect(result.current.state).toBe('initializing')
+      expect(mockCreatePoseDetector).toHaveBeenCalled()
+
+      // Now call stop() while start() is still awaiting detector.initialize()
+      act(() => {
+        result.current.stop()
+      })
+
+      expect(result.current.state).toBe('idle')
+
+      // Resolve the init and await the start promise within act
+      await act(async () => {
+        resolveInit?.()
+        await startPromise
+      })
+
+      // State must remain 'idle' — the aborted start() should not override it
+      expect(result.current.state).toBe('idle')
+      // Detector created during the aborted start should be destroyed
+      expect(mockDetector.destroy).toHaveBeenCalled()
+    })
+
+    it('should abort in-flight start() when stop() is called during camera acquisition', async () => {
+      // Make getUserMedia take a long time
+      let resolveCamera: ((stream: MediaStream) => void) | null = null
+      navigator.mediaDevices.getUserMedia = vi.fn().mockImplementation(() => {
+        return new Promise<MediaStream>((resolve) => {
+          resolveCamera = resolve
+        })
+      })
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      // Fire start() without awaiting — it will suspend at getUserMedia
+      let startPromise: Promise<void> | null = null
+      act(() => {
+        startPromise = result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // Stop while camera is being acquired (before resolving getUserMedia)
+      act(() => {
+        result.current.stop()
+      })
+
+      expect(result.current.state).toBe('idle')
+
+      // Resolve the camera and await the start promise within act
+      await act(async () => {
+        resolveCamera?.(mockStream)
+        await startPromise
+      })
+
+      // State must remain 'idle'
+      expect(result.current.state).toBe('idle')
+      // The stream obtained after stop should be cleaned up
+      const tracks = mockStream.getTracks()
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalled()
+      }
+    })
+
     it('should prevent concurrent starts', async () => {
       // Make initialize take a long time
       let resolveInit: (() => void) | null = null
