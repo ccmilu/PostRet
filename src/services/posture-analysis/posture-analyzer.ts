@@ -7,6 +7,13 @@ import { extractPostureAngles } from './angle-calculator'
 import { getScaledThresholds } from './thresholds'
 import { evaluateAllRules } from './posture-rules'
 import { EMAFilter, JitterFilter } from '@/utils/smoothing'
+import type { ScreenAngleReference } from '@/services/calibration/screen-angle-estimator'
+import {
+  extractScreenAngleSignals,
+  estimateAngleChange,
+  compensateAngles,
+} from '@/services/calibration/screen-angle-estimator'
+import { AdaptiveBaseline } from '@/services/calibration/adaptive-baseline'
 
 // Landmarks essential for the primary posture checks (head-forward, head-tilt,
 // too-close, shoulder-asymmetry).  LEFT_HIP / RIGHT_HIP are intentionally
@@ -90,6 +97,10 @@ function hasLowVisibility(worldLandmarks: readonly Landmark[]): boolean {
   return lowCount > CRITICAL_LANDMARKS.length / 2
 }
 
+export interface AnalyzerOptions {
+  readonly screenAngleReference?: ScreenAngleReference
+}
+
 export interface AnalyzeResult {
   readonly status: PostureStatus
   readonly angles: PostureAngles
@@ -101,23 +112,25 @@ export class PostureAnalyzer {
   private sensitivity: number
   private ruleToggles: RuleToggles
   private filters: SmoothingFilters
+  private screenAngleReference: ScreenAngleReference | null
+  private adaptiveBaseline: AdaptiveBaseline
+  private lastTimestamp: number
 
   constructor(
     calibration: CalibrationData,
     sensitivity: number,
-    ruleToggles: RuleToggles
+    ruleToggles: RuleToggles,
+    options?: AnalyzerOptions
   ) {
     this.calibration = calibration
     this.sensitivity = sensitivity
     this.ruleToggles = ruleToggles
     this.filters = createFilters()
+    this.screenAngleReference = options?.screenAngleReference ?? null
+    this.adaptiveBaseline = new AdaptiveBaseline(calibration)
+    this.lastTimestamp = 0
   }
 
-  /**
-   * Analyze a detection frame and return posture status, smoothed angles,
-   * and deviations from baseline. The legacy `analyze` method is kept for
-   * backward compatibility; prefer `analyzeDetailed` for richer output.
-   */
   analyzeDetailed(frame: DetectionFrame): AnalyzeResult {
     const confidence = computeConfidence(frame.worldLandmarks)
 
@@ -147,21 +160,24 @@ export class PostureAnalyzer {
     // Step 2: Angle extraction
     const rawAngles = extractPostureAngles(frame.worldLandmarks, frame.frameWidth)
 
+    // Step 2.5: Screen angle compensation
+    const compensatedAngles = this.applyScreenAngleCompensation(rawAngles, frame.landmarks)
+
     // Step 3: Time smoothing (EMA + jitter)
     const smoothedHeadForward = this.filters.headForwardJitter.update(
-      this.filters.headForwardEma.update(rawAngles.headForwardAngle)
+      this.filters.headForwardEma.update(compensatedAngles.headForwardAngle)
     )
     const smoothedTorso = this.filters.torsoJitter.update(
-      this.filters.torsoEma.update(rawAngles.torsoAngle)
+      this.filters.torsoEma.update(compensatedAngles.torsoAngle)
     )
     const smoothedHeadTilt = this.filters.headTiltJitter.update(
-      this.filters.headTiltEma.update(rawAngles.headTiltAngle)
+      this.filters.headTiltEma.update(compensatedAngles.headTiltAngle)
     )
     const smoothedFaceRatio = this.filters.faceRatioJitter.update(
-      this.filters.faceRatioEma.update(rawAngles.faceFrameRatio)
+      this.filters.faceRatioEma.update(compensatedAngles.faceFrameRatio)
     )
     const smoothedShoulderDiff = this.filters.shoulderJitter.update(
-      this.filters.shoulderEma.update(rawAngles.shoulderDiff)
+      this.filters.shoulderEma.update(compensatedAngles.shoulderDiff)
     )
 
     const smoothedAngles: PostureAngles = {
@@ -172,22 +188,30 @@ export class PostureAnalyzer {
       shoulderDiff: smoothedShoulderDiff,
     }
 
-    // Step 4: Baseline comparison
+    // Step 4: Adaptive baseline update + comparison
+    const deltaTime = this.computeDeltaTime(frame.timestamp)
+    const currentBaseline = this.adaptiveBaseline.getCurrentBaseline()
+
     const deviations: AngleDeviations = {
-      headForward: smoothedHeadForward - this.calibration.headForwardAngle,
-      torsoSlouch: smoothedTorso - this.calibration.torsoAngle,
-      headTilt: smoothedHeadTilt - this.calibration.headTiltAngle,
+      headForward: smoothedHeadForward - currentBaseline.headForwardAngle,
+      torsoSlouch: smoothedTorso - currentBaseline.torsoAngle,
+      headTilt: smoothedHeadTilt - currentBaseline.headTiltAngle,
       faceFrameRatio: smoothedFaceRatio,
-      shoulderDiff: Math.abs(smoothedShoulderDiff - this.calibration.shoulderDiff),
+      shoulderDiff: Math.abs(smoothedShoulderDiff - currentBaseline.shoulderDiff),
     }
 
     // Step 5: Rule evaluation
     const scaledThresholds = getScaledThresholds(this.sensitivity)
     const violations = evaluateAllRules(deviations, scaledThresholds, this.ruleToggles)
 
+    const isGood = violations.length === 0
+
+    // Step 5.5: Update adaptive baseline after evaluation
+    this.adaptiveBaseline.update(isGood, smoothedAngles, deltaTime)
+
     // Step 6: Output
     const status: PostureStatus = {
-      isGood: violations.length === 0,
+      isGood,
       violations,
       confidence,
       timestamp: frame.timestamp,
@@ -202,6 +226,11 @@ export class PostureAnalyzer {
 
   updateCalibration(calibration: CalibrationData): void {
     this.calibration = calibration
+    this.adaptiveBaseline = new AdaptiveBaseline(calibration)
+  }
+
+  updateScreenAngleReference(reference: ScreenAngleReference | null): void {
+    this.screenAngleReference = reference
   }
 
   updateSensitivity(sensitivity: number): void {
@@ -214,5 +243,31 @@ export class PostureAnalyzer {
 
   reset(): void {
     resetFilters(this.filters)
+    this.adaptiveBaseline.reset()
+    this.lastTimestamp = 0
+  }
+
+  private applyScreenAngleCompensation(
+    angles: PostureAngles,
+    landmarks: readonly Landmark[]
+  ): PostureAngles {
+    if (this.screenAngleReference === null) {
+      return angles
+    }
+
+    const currentSignals = extractScreenAngleSignals(landmarks)
+    const pitchDelta = estimateAngleChange(currentSignals, this.screenAngleReference)
+    return compensateAngles(angles, pitchDelta)
+  }
+
+  private computeDeltaTime(timestamp: number): number {
+    if (this.lastTimestamp === 0) {
+      this.lastTimestamp = timestamp
+      return 0
+    }
+
+    const delta = (timestamp - this.lastTimestamp) / 1000
+    this.lastTimestamp = timestamp
+    return Math.max(0, delta)
   }
 }
