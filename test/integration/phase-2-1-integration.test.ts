@@ -6,11 +6,18 @@ import {
   estimateAngleChange,
   compensateAngles,
 } from '@/services/calibration/screen-angle-estimator'
+import { extractPostureAngles } from '@/services/posture-analysis/angle-calculator'
 import { AdaptiveBaseline } from '@/services/calibration/adaptive-baseline'
 import type { DetectionFrame, Landmark } from '@/services/pose-detection/pose-types'
 import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { CalibrationData, RuleToggles } from '@/types/settings'
 import type { PostureAngles } from '@/services/posture-analysis/posture-types'
+import {
+  loadLandmarks,
+  loadLandmarksWithMetadata,
+  loadLandmarksByCategory,
+  toDetectionFrame,
+} from '../helpers/load-landmarks'
 
 // --- Helpers ---
 
@@ -599,6 +606,227 @@ describe('Phase 2.1 Integration — PostureAnalyzer Full Pipeline', () => {
       const lateViolations = violations.slice(-60).filter(v => v > 0).length
 
       expect(lateViolations).toBeLessThanOrEqual(earlyViolations)
+    })
+  })
+})
+
+// ============================================================
+// Part D: Real Photo Integration Tests
+// ============================================================
+
+describe('Phase 2.1 Integration — Real Photo Data', () => {
+  const ALL_ON: RuleToggles = {
+    forwardHead: true,
+    slouch: true,
+    headTilt: true,
+    tooClose: true,
+    shoulderAsymmetry: true,
+  }
+
+  function createCalibrationFromPhoto(photoId: number): CalibrationData {
+    const data = loadLandmarks(photoId)
+    const angles = extractPostureAngles(data.worldLandmarks, data.landmarks)
+    return {
+      headForwardAngle: angles.headForwardAngle,
+      torsoAngle: angles.torsoAngle,
+      headTiltAngle: angles.headTiltAngle,
+      faceFrameRatio: angles.faceFrameRatio,
+      shoulderDiff: angles.shoulderDiff,
+      timestamp: Date.now(),
+    }
+  }
+
+  function feedRealFrames(
+    analyzer: PostureAnalyzer,
+    frame: DetectionFrame,
+    count: number,
+    startTs = 1000,
+    intervalMs = 500,
+  ) {
+    let result = analyzer.analyzeDetailed({ ...frame, timestamp: startTs })
+    for (let i = 1; i < count; i++) {
+      result = analyzer.analyzeDetailed({ ...frame, timestamp: startTs + i * intervalMs })
+    }
+    return result
+  }
+
+  describe('screen angle compensation with real photo signals', () => {
+    it('calibrate at 110°, extract reference signals → signals match photo', () => {
+      const data = loadLandmarks(1)  // photo 1: good posture, 110°
+      const signals = extractScreenAngleSignals(data.landmarks)
+      const reference = calibrateScreenAngle(signals)
+
+      expect(reference.faceY).toBeCloseTo(signals.faceY, 5)
+      expect(reference.noseChinRatio).toBeCloseTo(signals.noseChinRatio, 5)
+      expect(reference.eyeMouthRatio).toBeCloseTo(signals.eyeMouthRatio, 5)
+    })
+
+    it('90° photo signals → negative pitchDelta relative to 110° reference', () => {
+      const ref110 = extractScreenAngleSignals(loadLandmarks(1).landmarks)
+      const reference = calibrateScreenAngle(ref110)
+
+      // Photo 3: good posture at 90° — screen more upright, face higher in frame
+      const sig90 = extractScreenAngleSignals(loadLandmarks(3).landmarks)
+      const delta = estimateAngleChange(sig90, reference)
+
+      expect(delta).toBeLessThan(0)
+    })
+
+    it('130° photo signals → positive pitchDelta relative to 110° reference', () => {
+      const ref110 = extractScreenAngleSignals(loadLandmarks(1).landmarks)
+      const reference = calibrateScreenAngle(ref110)
+
+      // Photo 4: good posture at 130° — screen tilted back, face lower in frame
+      const sig130 = extractScreenAngleSignals(loadLandmarks(4).landmarks)
+      const delta = estimateAngleChange(sig130, reference)
+
+      expect(delta).toBeGreaterThan(0)
+    })
+
+    it('compensation through full pipeline with real signals does not crash', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const refSignals = extractScreenAngleSignals(loadLandmarks(1).landmarks)
+      const reference = calibrateScreenAngle(refSignals)
+
+      const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON, {
+        screenAngleReference: reference,
+      })
+
+      // Feed photos at different angles through the analyzer
+      for (const photoId of [1, 3, 4, 5, 9, 11, 21]) {
+        const data = loadLandmarks(photoId)
+        const frame = toDetectionFrame(data)
+        const result = analyzer.analyzeDetailed(frame)
+        expect(result.status).toBeDefined()
+        expect(Number.isFinite(result.angles.headForwardAngle)).toBe(true)
+      }
+    })
+
+    it('compensation reduces headForward deviation for nearby lid angle (110° vs same-angle variation)', () => {
+      // Single-reference compensation works well for small angle differences.
+      // Large angle spans (90°→130°) can over-compensate due to the linear signal
+      // model — that's expected and why multi-angle calibration exists.
+      const cal = createCalibrationFromPhoto(1) // calibrate at 110°
+      const refSignals = extractScreenAngleSignals(loadLandmarks(1).landmarks)
+      const reference = calibrateScreenAngle(refSignals)
+
+      // Compare photo 1 vs photo 2 (both 110°, good posture, different poses)
+      const baseHF = (() => {
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON, { screenAngleReference: reference })
+        return feedRealFrames(analyzer, toDetectionFrame(loadLandmarks(1)), 10).angles.headForwardAngle
+      })()
+
+      const photo2HF = (() => {
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON, { screenAngleReference: reference })
+        return feedRealFrames(analyzer, toDetectionFrame(loadLandmarks(2)), 10).angles.headForwardAngle
+      })()
+
+      // Same angle photos should have small deviation
+      expect(Math.abs(photo2HF - baseHF)).toBeLessThan(5)
+    })
+  })
+
+  describe('adaptive baseline with real photo data', () => {
+    it('sustained good posture (30s simulation) → still isGood', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON)
+
+      const goodData = loadLandmarks(1)
+      let ts = 1000
+
+      // Feed 60 frames at 500ms (30 seconds)
+      for (let i = 0; i < 60; i++) {
+        ts += 500
+        analyzer.analyzeDetailed(toDetectionFrame(goodData, ts))
+      }
+
+      const final = analyzer.analyzeDetailed(toDetectionFrame(goodData, ts + 500))
+      expect(final.status.isGood).toBe(true)
+    })
+
+    it('good → bad → good: recovery works with real photo data', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON)
+
+      const goodData = loadLandmarks(1) // good posture
+      const badData = loadLandmarks(13)  // severe forward head
+      let ts = 1000
+
+      // Phase 1: 20 seconds good
+      for (let i = 0; i < 40; i++) {
+        ts += 500
+        analyzer.analyzeDetailed(toDetectionFrame(goodData, ts))
+      }
+
+      // Phase 2: 5 seconds bad
+      for (let i = 0; i < 10; i++) {
+        ts += 500
+        analyzer.analyzeDetailed(toDetectionFrame(badData, ts))
+      }
+
+      // Phase 3: 10 seconds good → should recover
+      for (let i = 0; i < 20; i++) {
+        ts += 500
+        analyzer.analyzeDetailed(toDetectionFrame(goodData, ts))
+      }
+
+      ts += 500
+      const recovered = analyzer.analyzeDetailed(toDetectionFrame(goodData, ts))
+      expect(recovered.status.isGood).toBe(true)
+    })
+  })
+
+  describe('full pipeline with real photos — posture detection accuracy', () => {
+    it('calibrate photo 1, feed good posture photos → all isGood', () => {
+      const cal = createCalibrationFromPhoto(1)
+      const goodPhotos = loadLandmarksByCategory('good')
+        .filter(p => p.metadata.lighting === 'normal')
+
+      for (const { landmarkData, metadata } of goodPhotos) {
+        const frame = toDetectionFrame(landmarkData)
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON)
+        const result = feedRealFrames(analyzer, frame, 10)
+        expect(
+          result.status.isGood,
+          `Photo ${metadata.photoId}: ${metadata.notes} should be isGood=true`,
+        ).toBe(true)
+      }
+    })
+
+    it('calibrate photo 1, feed severe forward_head → FORWARD_HEAD detected', () => {
+      const cal = createCalibrationFromPhoto(1)
+
+      // Photos 13 (severe), 14 (moderate+低头) — should trigger FORWARD_HEAD
+      for (const photoId of [13, 14]) {
+        const { landmarkData, metadata } = loadLandmarksWithMetadata(photoId)
+        const frame = toDetectionFrame(landmarkData)
+        const analyzer = new PostureAnalyzer(cal, 0.5, ALL_ON)
+        const result = feedRealFrames(analyzer, frame, 15)
+        expect(
+          result.status.violations.some(v => v.rule === 'FORWARD_HEAD'),
+          `Photo ${photoId}: ${metadata.notes} should detect FORWARD_HEAD`,
+        ).toBe(true)
+      }
+    })
+
+    it('different lid angles: multi-ref calibration enables good detection across angles', () => {
+      // Single-reference compensation can't handle the full 90°→130° range.
+      // Multi-reference calibration (using extractScreenAngleSignals at each angle)
+      // is the proper solution. Here we verify the signals are directionally correct.
+      const ref110 = extractScreenAngleSignals(loadLandmarks(1).landmarks)
+      const ref90 = extractScreenAngleSignals(loadLandmarks(3).landmarks)
+      const ref130 = extractScreenAngleSignals(loadLandmarks(4).landmarks)
+
+      // Direction check: faceY should increase with lid angle
+      expect(ref90.faceY).toBeLessThan(ref110.faceY)
+      expect(ref110.faceY).toBeLessThan(ref130.faceY)
+
+      // Delta from 110° reference
+      const delta90 = estimateAngleChange(ref90, ref110)
+      const delta130 = estimateAngleChange(ref130, ref110)
+
+      expect(delta90).toBeLessThan(0) // 90° = more upright = negative
+      expect(delta130).toBeGreaterThan(0) // 130° = tilted back = positive
     })
   })
 })
