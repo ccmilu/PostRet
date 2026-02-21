@@ -124,7 +124,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 
 ## 里程碑进度
 
-- [ ] **Milestone 1: 核心检测引擎** — 进行中
+- [x] **Milestone 1: 核心检测引擎** — 已完成
   - [x] Phase 1.1: 项目脚手架 + 测试基础设施
   - [x] Phase 1.2: 摄像头和姿态检测
   - [x] Phase 1.3: 姿态分析引擎
