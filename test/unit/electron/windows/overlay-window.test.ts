@@ -209,16 +209,18 @@ describe('OverlayWindow', () => {
       expect(mockInstance.show).toHaveBeenCalled()
     })
 
-    it('uses fullscreen-ui vibrancy on modern macOS', () => {
+    it('skips vibrancy on modern macOS (Liquid Glass path)', () => {
       Object.defineProperty(process, 'platform', { value: 'darwin' })
       mockRelease.mockReturnValue('25.3.0')
 
       const overlay = new OverlayWindow()
       overlay.show()
 
+      // On macOS 26+, vibrancy is not set in constructor — Liquid Glass is applied
+      // in the ready-to-show callback, with vibrancy as fallback if LG fails.
       const config = MockBrowserWindow.mock.calls[0][0]
-      expect(config.vibrancy).toBe('fullscreen-ui')
-      expect(config.visualEffectState).toBe('active')
+      expect(config.vibrancy).toBeUndefined()
+      expect(config.visualEffectState).toBeUndefined()
     })
 
     it('uses under-window vibrancy on legacy macOS', () => {
