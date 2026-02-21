@@ -23,7 +23,7 @@ export interface UsePostureDetectionReturn {
   readonly start: (calibration: CalibrationData, detection: DetectionSettings) => Promise<void>
   readonly stop: () => void
   readonly pause: () => void
-  readonly resume: () => void
+  readonly resume: () => Promise<void>
   readonly updateDetectionSettings: (detection: DetectionSettings) => void
   readonly updateCalibration: (calibration: CalibrationData) => void
 }
@@ -97,17 +97,21 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     }
   }, [])
 
+  const releaseCameraResources = useCallback(() => {
+    stopMediaStream(streamRef.current)
+    streamRef.current = null
+    removeVideoElement(videoRef.current)
+    videoRef.current = null
+  }, [])
+
   const releaseResources = useCallback(() => {
     clearDetectionLoop()
     detectorRef.current?.destroy()
     detectorRef.current = null
     analyzerRef.current = null
-    stopMediaStream(streamRef.current)
-    streamRef.current = null
-    removeVideoElement(videoRef.current)
-    videoRef.current = null
+    releaseCameraResources()
     detectionSettingsRef.current = null
-  }, [clearDetectionLoop])
+  }, [clearDetectionLoop, releaseCameraResources])
 
   const runDetectionFrame = useCallback(() => {
     if (stateRef.current !== 'detecting') {
@@ -231,18 +235,45 @@ export function usePostureDetection(): UsePostureDetectionReturn {
       return
     }
     clearDetectionLoop()
+    releaseCameraResources()
     analyzerRef.current?.reset()
     setState('paused')
-  }, [clearDetectionLoop])
+  }, [clearDetectionLoop, releaseCameraResources])
 
-  const resume = useCallback(() => {
+  const resume = useCallback(async (): Promise<void> => {
     if (stateRef.current !== 'paused') {
       return
     }
+
+    // Re-acquire camera stream
+    let stream: MediaStream
+    try {
+      stream = await acquireCameraStream()
+    } catch (err) {
+      setState('no-camera')
+      const message = err instanceof Error ? err.message : 'Cannot access camera'
+      setError(message)
+      return
+    }
+    streamRef.current = stream
+
+    // Re-create hidden video element and start playback
+    const video = createHiddenVideoElement(stream)
+    videoRef.current = video
+    try {
+      await video.play()
+    } catch (err) {
+      releaseCameraResources()
+      setState('error')
+      const message = err instanceof Error ? err.message : 'Video playback failed'
+      setError(message)
+      return
+    }
+
     const intervalMs = detectionSettingsRef.current?.intervalMs ?? 500
     setState('detecting')
     startDetectionLoop(intervalMs)
-  }, [startDetectionLoop])
+  }, [startDetectionLoop, releaseCameraResources])
 
   const updateDetectionSettings = useCallback(
     (detection: DetectionSettings) => {

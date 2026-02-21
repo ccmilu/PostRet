@@ -463,6 +463,27 @@ describe('usePostureDetection', () => {
       expect(mockDetector.detect).not.toHaveBeenCalled()
     })
 
+    it('should release camera stream on pause (camera LED off)', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // Camera should be active at this point
+      const tracks = mockStream.getTracks()
+      expect(tracks[0].stop).not.toHaveBeenCalled()
+
+      await act(async () => {
+        result.current.pause()
+      })
+
+      // Camera tracks should be stopped
+      expect(tracks[0].stop).toHaveBeenCalled()
+      // Video element should be removed
+      expect(mockVideo.remove).toHaveBeenCalled()
+    })
+
     it('should reset analyzer filters on pause', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
@@ -477,7 +498,7 @@ describe('usePostureDetection', () => {
       expect(mockPostureAnalyzerInstance.reset).toHaveBeenCalled()
     })
 
-    it('should resume detection loop on resume()', async () => {
+    it('should re-acquire camera and resume detection loop on resume()', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
       await act(async () => {
@@ -490,9 +511,16 @@ describe('usePostureDetection', () => {
 
       expect(result.current.state).toBe('paused')
 
+      // getUserMedia should have been called once during start
+      const startCalls = (navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls.length
+
       await act(async () => {
-        result.current.resume()
+        await result.current.resume()
       })
+
+      // getUserMedia should have been called again for resume
+      expect((navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls.length)
+        .toBe(startCalls + 1)
 
       expect(result.current.state).toBe('detecting')
 
@@ -504,6 +532,30 @@ describe('usePostureDetection', () => {
 
       expect((mockDetector.detect as ReturnType<typeof vi.fn>).mock.calls.length)
         .toBeGreaterThan(0)
+    })
+
+    it('should transition to no-camera state when resume fails to acquire camera', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      await act(async () => {
+        result.current.pause()
+      })
+
+      // Make camera unavailable for resume
+      navigator.mediaDevices.getUserMedia = vi
+        .fn()
+        .mockRejectedValue(new DOMException('Camera in use', 'NotReadableError'))
+
+      await act(async () => {
+        await result.current.resume()
+      })
+
+      expect(result.current.state).toBe('no-camera')
+      expect(result.current.error).toBeTruthy()
     })
 
     it('should not pause if not currently detecting', async () => {
@@ -526,7 +578,7 @@ describe('usePostureDetection', () => {
 
       // state is 'detecting', resume should be a no-op
       await act(async () => {
-        result.current.resume()
+        await result.current.resume()
       })
 
       expect(result.current.state).toBe('detecting')
@@ -582,8 +634,11 @@ describe('usePostureDetection', () => {
 
       expect(result.current.state).toBe('paused')
 
+      // Resume is async (re-acquires camera), so we need to flush promises
       await act(async () => {
         resumeCallback?.()
+        // Flush microtask queue so the async resume() completes
+        await vi.advanceTimersByTimeAsync(0)
       })
 
       expect(result.current.state).toBe('detecting')
