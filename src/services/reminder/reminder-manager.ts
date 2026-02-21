@@ -4,6 +4,7 @@ import type {
   ReminderConfig,
   ReminderState,
 } from './reminder-types'
+import { isInIgnorePeriod } from './ignore-period-checker'
 
 export class ReminderManager {
   private config: ReminderConfig
@@ -19,6 +20,12 @@ export class ReminderManager {
   }
 
   onPostureUpdate(status: PostureStatus): void {
+    // If we're in an ignore period, treat as good posture (suppress all reminders)
+    if (isInIgnorePeriod(this.config.ignorePeriods, this.config.weekendIgnore)) {
+      this.handleGoodPosture()
+      return
+    }
+
     if (status.isGood) {
       this.handleGoodPosture()
     } else {
@@ -32,6 +39,10 @@ export class ReminderManager {
 
   getState(): ReminderState {
     return this.state
+  }
+
+  isInIgnorePeriod(): boolean {
+    return isInIgnorePeriod(this.config.ignorePeriods, this.config.weekendIgnore)
   }
 
   dispose(): void {

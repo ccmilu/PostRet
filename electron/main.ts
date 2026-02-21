@@ -6,6 +6,7 @@ import { OverlayWindow } from './windows/overlay-window'
 import { BlurController } from './blur/blur-controller'
 import { ConfigStore } from './store/config-store'
 import { registerIpcHandlers } from './ipc/ipc-handlers'
+import { syncAutoLaunch } from './auto-launch/auto-launch'
 import { ReminderManager } from '../src/services/reminder/reminder-manager'
 import { createNotificationSender } from '../src/services/reminder/notification-sender'
 import { createSoundPlayer } from '../src/services/reminder/sound-player'
@@ -44,6 +45,8 @@ function buildReminderConfig(store: ConfigStore): ReminderConfig {
     sound: settings.reminder.sound,
     delayMs: settings.reminder.delayMs,
     fadeOutDurationMs: settings.reminder.fadeOutDurationMs,
+    ignorePeriods: settings.display.ignorePeriods,
+    weekendIgnore: settings.display.weekendIgnore,
   }
 }
 
@@ -101,6 +104,7 @@ app.whenReady().then(() => {
     onSettingsChanged: () => {
       if (configStore && reminderManager) {
         reminderManager.updateConfig(buildReminderConfig(configStore))
+        trayManager?.updateIgnorePeriodStatus(reminderManager.isInIgnorePeriod())
       }
     },
   })
@@ -114,6 +118,9 @@ app.whenReady().then(() => {
   if (savedSettings.calibration && savedSettings.detection.enabled) {
     settingsWindow.ensureCreated()
   }
+
+  // Sync auto-launch state with saved settings
+  syncAutoLaunch(savedSettings.display.autoLaunch)
 
   // Expose for E2E testing
   ;(global as Record<string, unknown>).__postret = {

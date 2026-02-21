@@ -21,6 +21,7 @@ export class TrayManager {
   private tray: Tray | null = null
   private readonly callbacks: TrayCallbacks
   private currentStatus: AppStatus = 'paused'
+  private inIgnorePeriod = false
 
   constructor(callbacks: TrayCallbacks) {
     this.callbacks = callbacks
@@ -45,9 +46,13 @@ export class TrayManager {
     const isPaused = this.currentStatus === 'paused'
     const isDetecting = this.currentStatus === 'detecting'
 
+    const statusLabel = this.inIgnorePeriod
+      ? `${STATUS_LABELS[this.currentStatus]}  (忽略时段)`
+      : STATUS_LABELS[this.currentStatus]
+
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: STATUS_LABELS[this.currentStatus],
+        label: statusLabel,
         enabled: false,
       },
       { type: 'separator' },
@@ -73,6 +78,12 @@ export class TrayManager {
     ])
 
     this.tray.setContextMenu(contextMenu)
+  }
+
+  updateIgnorePeriodStatus(inIgnorePeriod: boolean): void {
+    if (this.inIgnorePeriod === inIgnorePeriod) return
+    this.inIgnorePeriod = inIgnorePeriod
+    this.rebuildMenu()
   }
 
   updateStatus(status: AppStatus): void {

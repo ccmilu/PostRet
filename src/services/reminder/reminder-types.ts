@@ -1,4 +1,5 @@
 import type { PostureViolation } from '@/types/ipc'
+import type { IgnorePeriod } from '@/types/settings'
 
 export interface ReminderConfig {
   readonly blur: boolean
@@ -6,6 +7,8 @@ export interface ReminderConfig {
   readonly sound: boolean
   readonly delayMs: number
   readonly fadeOutDurationMs: number
+  readonly ignorePeriods: readonly IgnorePeriod[]
+  readonly weekendIgnore: boolean
 }
 
 export interface ReminderCallbacks {
@@ -23,4 +26,6 @@ export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   sound: false,
   delayMs: 5000,
   fadeOutDurationMs: 1500,
+  ignorePeriods: [],
+  weekendIgnore: false,
 } as const

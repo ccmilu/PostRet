@@ -19,6 +19,8 @@ function createConfig(overrides?: Partial<ReminderConfig>): ReminderConfig {
     sound: true,
     delayMs: 5000,
     fadeOutDurationMs: 1500,
+    ignorePeriods: [],
+    weekendIgnore: false,
     ...overrides,
   }
 }
@@ -458,6 +460,105 @@ describe('ReminderManager', () => {
       expect(callbacks.onBlurDeactivate).not.toHaveBeenCalled()
       expect(callbacks.onNotify).not.toHaveBeenCalled()
       expect(callbacks.onSound).not.toHaveBeenCalled()
+      manager.dispose()
+    })
+  })
+
+  describe('ignore periods', () => {
+    it('should suppress reminders during an ignore period', () => {
+      // Set up a period covering the fake time
+      const now = new Date()
+      const startH = now.getHours().toString().padStart(2, '0')
+      const startM = now.getMinutes().toString().padStart(2, '0')
+      const endH = ((now.getHours() + 1) % 24).toString().padStart(2, '0')
+      const endM = startM
+
+      const ignoringConfig = createConfig({
+        ignorePeriods: [{ start: `${startH}:${startM}`, end: `${endH}:${endM}` }],
+      })
+      const manager = new ReminderManager(ignoringConfig, callbacks)
+
+      manager.onPostureUpdate(badPosture())
+      vi.advanceTimersByTime(5000)
+
+      // Should not trigger anything because we're in ignore period
+      expect(manager.getState()).toBe('idle')
+      expect(callbacks.onBlurActivate).not.toHaveBeenCalled()
+      expect(callbacks.onNotify).not.toHaveBeenCalled()
+      expect(callbacks.onSound).not.toHaveBeenCalled()
+      manager.dispose()
+    })
+
+    it('should cancel pending delay when entering ignore period via config update', () => {
+      const manager = new ReminderManager(config, callbacks)
+
+      // Start bad posture
+      manager.onPostureUpdate(badPosture())
+      expect(manager.getState()).toBe('delaying')
+
+      // Update config to add ignore period covering current time
+      const now = new Date()
+      const startH = now.getHours().toString().padStart(2, '0')
+      const startM = now.getMinutes().toString().padStart(2, '0')
+      const endH = ((now.getHours() + 1) % 24).toString().padStart(2, '0')
+      const endM = startM
+
+      manager.updateConfig({
+        ignorePeriods: [{ start: `${startH}:${startM}`, end: `${endH}:${endM}` }],
+      })
+
+      // Next posture update should be treated as good
+      manager.onPostureUpdate(badPosture())
+      expect(manager.getState()).toBe('idle')
+      manager.dispose()
+    })
+
+    it('should report isInIgnorePeriod correctly', () => {
+      const now = new Date()
+      const startH = now.getHours().toString().padStart(2, '0')
+      const startM = now.getMinutes().toString().padStart(2, '0')
+      const endH = ((now.getHours() + 1) % 24).toString().padStart(2, '0')
+      const endM = startM
+
+      const ignoringConfig = createConfig({
+        ignorePeriods: [{ start: `${startH}:${startM}`, end: `${endH}:${endM}` }],
+      })
+      const manager = new ReminderManager(ignoringConfig, callbacks)
+
+      expect(manager.isInIgnorePeriod()).toBe(true)
+      manager.dispose()
+    })
+
+    it('should report isInIgnorePeriod false when not in any period', () => {
+      const manager = new ReminderManager(config, callbacks)
+      expect(manager.isInIgnorePeriod()).toBe(false)
+      manager.dispose()
+    })
+
+    it('should deactivate triggered blur when ignore period becomes active', () => {
+      const manager = new ReminderManager(config, callbacks)
+
+      // First trigger reminders
+      manager.onPostureUpdate(badPosture())
+      vi.advanceTimersByTime(5000)
+      expect(manager.getState()).toBe('triggered')
+      expect(callbacks.onBlurActivate).toHaveBeenCalledOnce()
+
+      // Now update config to add ignore period
+      const now = new Date()
+      const startH = now.getHours().toString().padStart(2, '0')
+      const startM = now.getMinutes().toString().padStart(2, '0')
+      const endH = ((now.getHours() + 1) % 24).toString().padStart(2, '0')
+      const endM = startM
+
+      manager.updateConfig({
+        ignorePeriods: [{ start: `${startH}:${startM}`, end: `${endH}:${endM}` }],
+      })
+
+      // Next update should treat as good and deactivate
+      manager.onPostureUpdate(badPosture())
+      expect(manager.getState()).toBe('idle')
+      expect(callbacks.onBlurDeactivate).toHaveBeenCalledOnce()
       manager.dispose()
     })
   })

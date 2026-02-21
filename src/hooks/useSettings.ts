@@ -5,6 +5,7 @@ import type {
   PostureSettings,
   DetectionSettings,
   ReminderSettings,
+  DisplaySettings,
 } from '@/types/settings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 
@@ -18,6 +19,9 @@ export interface UseSettingsReturn {
   ) => Promise<void>
   readonly updateReminder: (
     partial: Partial<ReminderSettings>,
+  ) => Promise<void>
+  readonly updateDisplay: (
+    partial: Partial<DisplaySettings>,
   ) => Promise<void>
   readonly reloadSettings: () => Promise<void>
 }
@@ -163,6 +167,17 @@ function useSettingsInternal(): UseSettingsReturn {
     [updateSettings],
   )
 
+  const updateDisplay = useCallback(
+    async (partial: Partial<DisplaySettings>): Promise<void> => {
+      const nextDisplay: DisplaySettings = {
+        ...settingsRef.current.display,
+        ...partial,
+      }
+      await updateSettings({ display: nextDisplay })
+    },
+    [updateSettings],
+  )
+
   return {
     settings,
     loading,
@@ -170,6 +185,7 @@ function useSettingsInternal(): UseSettingsReturn {
     updateSettings,
     updateDetection,
     updateReminder,
+    updateDisplay,
     reloadSettings,
   }
 }
