@@ -962,6 +962,70 @@ describe('usePostureDetection', () => {
 
       expect(result.current.state).toBe('idle')
     })
+
+    it('stopAsync() called twice in succession should be safe', async () => {
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      expect(result.current.state).toBe('detecting')
+
+      // Call stopAsync twice — second call should see no stream and resolve immediately
+      await act(async () => {
+        const p1 = result.current.stopAsync()
+        const p2 = result.current.stopAsync()
+        await vi.advanceTimersByTimeAsync(300)
+        await p1
+        await p2
+      })
+
+      expect(result.current.state).toBe('idle')
+    })
+
+    it('stopAsync() should abort in-flight start() during initialization', async () => {
+      // Make initialize take a long time
+      let resolveInit: (() => void) | null = null
+      ;(mockDetector.initialize as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return new Promise<void>((resolve) => {
+          resolveInit = resolve
+        })
+      })
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      // Fire start() — it will block at detector.initialize()
+      let startPromise: Promise<void> | null = null
+      act(() => {
+        startPromise = result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+      expect(result.current.state).toBe('initializing')
+
+      // Call stopAsync while start is in-flight
+      await act(async () => {
+        const stopPromise = result.current.stopAsync()
+        // Advance past camera release delay
+        await vi.advanceTimersByTimeAsync(300)
+        await stopPromise
+      })
+
+      expect(result.current.state).toBe('idle')
+
+      // Resolve init and let start() finish — should detect abort via generation counter
+      await act(async () => {
+        resolveInit?.()
+        await startPromise
+      })
+
+      expect(result.current.state).toBe('idle')
+      expect(mockDetector.destroy).toHaveBeenCalled()
+    })
   })
 
   // ==============================
