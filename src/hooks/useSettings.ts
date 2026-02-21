@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useContext, useRef, createContext } from 'react'
+import type { ReactNode } from 'react'
+import { createElement } from 'react'
 import type {
   PostureSettings,
   DetectionSettings,
@@ -28,10 +30,50 @@ function hasElectronAPI(): boolean {
   )
 }
 
+// ---- Context ----
+
+const SettingsContext = createContext<UseSettingsReturn | null>(null)
+
+export interface SettingsProviderProps {
+  readonly children: ReactNode
+}
+
+/**
+ * Provides a single shared settings state to all descendant components.
+ * Must be mounted once near the root of the component tree so that all
+ * consumers of useSettings() share the same state instance.
+ */
+export function SettingsProvider({ children }: SettingsProviderProps) {
+  const value = useSettingsInternal()
+  return createElement(SettingsContext.Provider, { value }, children)
+}
+
+/**
+ * Consumes the shared settings state from the nearest SettingsProvider.
+ * Throws if no provider is found – wrap your app in <SettingsProvider>.
+ */
 export function useSettings(): UseSettingsReturn {
+  const ctx = useContext(SettingsContext)
+  if (ctx === null) {
+    throw new Error(
+      'useSettings must be used within a <SettingsProvider>. ' +
+      'Wrap your component tree (or test) in <SettingsProvider>.',
+    )
+  }
+  return ctx
+}
+
+// ---- Internal implementation ----
+
+function useSettingsInternal(): UseSettingsReturn {
   const [settings, setSettings] = useState<PostureSettings>(DEFAULT_SETTINGS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Keep a ref to the latest settings so that callbacks can always read the
+  // freshest value without needing to be re-created on every settings change.
+  const settingsRef = useRef<PostureSettings>(settings)
+  settingsRef.current = settings
 
   const reloadSettings = useCallback(async (): Promise<void> => {
     try {
@@ -79,42 +121,46 @@ export function useSettings(): UseSettingsReturn {
   const updateSettings = useCallback(
     async (partial: Partial<PostureSettings>): Promise<void> => {
       setError(null)
-      const next: PostureSettings = { ...settings, ...partial }
+      // Use settingsRef to always read the latest value, avoiding stale
+      // closure issues when multiple updates happen in quick succession.
+      const current = settingsRef.current
+      const next: PostureSettings = { ...current, ...partial }
       setSettings(next)
       try {
         if (hasElectronAPI()) {
           await window.electronAPI.setSettings(next)
         }
       } catch (err) {
-        setSettings(settings)
+        // Rollback to the value that was current before this update
+        setSettings(current)
         const message =
           err instanceof Error ? err.message : 'Failed to save settings'
         setError(message)
       }
     },
-    [settings],
+    [], // stable – reads from settingsRef instead of closing over settings
   )
 
   const updateDetection = useCallback(
     async (partial: Partial<DetectionSettings>): Promise<void> => {
       const nextDetection: DetectionSettings = {
-        ...settings.detection,
+        ...settingsRef.current.detection,
         ...partial,
       }
       await updateSettings({ detection: nextDetection })
     },
-    [settings.detection, updateSettings],
+    [updateSettings],
   )
 
   const updateReminder = useCallback(
     async (partial: Partial<ReminderSettings>): Promise<void> => {
       const nextReminder: ReminderSettings = {
-        ...settings.reminder,
+        ...settingsRef.current.reminder,
         ...partial,
       }
       await updateSettings({ reminder: nextReminder })
     },
-    [settings.reminder, updateSettings],
+    [updateSettings],
   )
 
   return {

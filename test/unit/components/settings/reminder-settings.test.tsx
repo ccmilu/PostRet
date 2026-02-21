@@ -1,7 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { ReminderSettings } from '@/components/settings/ReminderSettings'
+import { SettingsProvider } from '@/hooks/useSettings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 import type { IpcApi } from '@/types/ipc'
+
+function renderWithProvider(ui: ReactNode) {
+  return render(<SettingsProvider>{ui}</SettingsProvider>)
+}
 
 function createMockElectronAPI(overrides?: Partial<IpcApi>): IpcApi {
   return {
@@ -29,7 +35,7 @@ describe('ReminderSettings', () => {
       getSettings: vi.fn().mockReturnValue(new Promise(() => {})),
     })
 
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     expect(
       screen.getByTestId('reminder-settings-loading'),
@@ -37,7 +43,7 @@ describe('ReminderSettings', () => {
   })
 
   it('should render all three toggles after loading', async () => {
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -49,7 +55,7 @@ describe('ReminderSettings', () => {
   })
 
   it('should render sensitivity, delay, and fade-out sliders', async () => {
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -61,7 +67,7 @@ describe('ReminderSettings', () => {
   })
 
   it('should reflect default toggle values', async () => {
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -84,7 +90,7 @@ describe('ReminderSettings', () => {
       setSettings: mockSetSettings,
     })
 
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -107,7 +113,7 @@ describe('ReminderSettings', () => {
       setSettings: mockSetSettings,
     })
 
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -132,7 +138,7 @@ describe('ReminderSettings', () => {
       setSettings: mockSetSettings,
     })
 
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -155,7 +161,7 @@ describe('ReminderSettings', () => {
       setSettings: mockSetSettings,
     })
 
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -175,7 +181,7 @@ describe('ReminderSettings', () => {
   })
 
   it('should display fade-out hint with formatted time', async () => {
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()
@@ -186,7 +192,7 @@ describe('ReminderSettings', () => {
   })
 
   it('should display delay hint with formatted time', async () => {
-    render(<ReminderSettings />)
+    renderWithProvider(<ReminderSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('reminder-settings')).toBeInTheDocument()

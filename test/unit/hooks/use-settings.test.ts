@@ -1,8 +1,14 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { useSettings } from '@/hooks/useSettings'
+import type { ReactNode } from 'react'
+import { createElement } from 'react'
+import { useSettings, SettingsProvider } from '@/hooks/useSettings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 import type { PostureSettings } from '@/types/settings'
 import type { IpcApi } from '@/types/ipc'
+
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(SettingsProvider, null, children)
+}
 
 function createMockElectronAPI(
   overrides?: Partial<IpcApi>,
@@ -29,7 +35,7 @@ describe('useSettings', () => {
 
   describe('without electronAPI (fallback mode)', () => {
     it('should return DEFAULT_SETTINGS when electronAPI is not available', async () => {
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -40,7 +46,7 @@ describe('useSettings', () => {
     })
 
     it('should update settings in local state when electronAPI is not available', async () => {
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -66,7 +72,7 @@ describe('useSettings', () => {
         getSettings: vi.fn().mockResolvedValue(customSettings),
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       expect(result.current.loading).toBe(true)
 
@@ -83,7 +89,7 @@ describe('useSettings', () => {
         getSettings: vi.fn().mockRejectedValue(new Error('IPC error')),
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -99,7 +105,7 @@ describe('useSettings', () => {
         setSettings: mockSetSettings,
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -121,7 +127,7 @@ describe('useSettings', () => {
         setSettings: vi.fn().mockRejectedValue(new Error('Save failed')),
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -144,7 +150,7 @@ describe('useSettings', () => {
     it('should update only detection settings immutably', async () => {
       window.electronAPI = createMockElectronAPI()
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -168,7 +174,7 @@ describe('useSettings', () => {
     it('should update only reminder settings immutably', async () => {
       window.electronAPI = createMockElectronAPI()
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -190,7 +196,7 @@ describe('useSettings', () => {
 
   describe('reloadSettings', () => {
     it('should expose reloadSettings function', async () => {
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -217,7 +223,7 @@ describe('useSettings', () => {
         getSettings: mockGetSettings,
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -245,7 +251,7 @@ describe('useSettings', () => {
         getSettings: mockGetSettings,
       })
 
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -259,7 +265,7 @@ describe('useSettings', () => {
     })
 
     it('should be a no-op without electronAPI', async () => {
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)
@@ -279,7 +285,7 @@ describe('useSettings', () => {
 
   describe('immutability', () => {
     it('should return new settings object on update', async () => {
-      const { result } = renderHook(() => useSettings())
+      const { result } = renderHook(() => useSettings(), { wrapper })
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false)

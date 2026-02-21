@@ -1,7 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { GeneralSettings } from '@/components/settings/GeneralSettings'
+import { SettingsProvider } from '@/hooks/useSettings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 import type { IpcApi } from '@/types/ipc'
+
+function renderWithProvider(ui: ReactNode) {
+  return render(<SettingsProvider>{ui}</SettingsProvider>)
+}
 
 function createMockElectronAPI(overrides?: Partial<IpcApi>): IpcApi {
   return {
@@ -29,13 +35,13 @@ describe('GeneralSettings', () => {
       getSettings: vi.fn().mockReturnValue(new Promise(() => {})),
     })
 
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     expect(screen.getByTestId('general-settings-loading')).toBeInTheDocument()
   })
 
   it('should render detection toggle and status after loading', async () => {
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -46,7 +52,7 @@ describe('GeneralSettings', () => {
   })
 
   it('should show "未校准" when calibration is null and detection is enabled', async () => {
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -63,7 +69,7 @@ describe('GeneralSettings', () => {
       }),
     })
 
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -87,7 +93,7 @@ describe('GeneralSettings', () => {
       }),
     })
 
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -98,7 +104,7 @@ describe('GeneralSettings', () => {
 
   it('should call onStartCalibration when calibration button is clicked', async () => {
     const mockOnStart = vi.fn()
-    render(<GeneralSettings onStartCalibration={mockOnStart} />)
+    renderWithProvider(<GeneralSettings onStartCalibration={mockOnStart} />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -115,7 +121,7 @@ describe('GeneralSettings', () => {
       setSettings: mockSetSettings,
     })
 
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('general-settings')).toBeInTheDocument()
@@ -145,7 +151,7 @@ describe('GeneralSettings', () => {
       }),
     })
 
-    render(<GeneralSettings />)
+    renderWithProvider(<GeneralSettings />)
 
     await waitFor(() => {
       expect(screen.getByTestId('calibration-done-hint')).toBeInTheDocument()
