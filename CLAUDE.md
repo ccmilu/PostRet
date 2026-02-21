@@ -3,9 +3,9 @@
 - 框架: Electron (最新稳定版) + React 18 + TypeScript
 - 构建: Vite + vite-plugin-electron
 - 姿态检测: MediaPipe JS (@mediapipe/tasks-vision) — 33 关键点+3D, 纯 WASM
-- 屏幕模糊: macOS 26+ electron-liquid-glass (Liquid Glass), macOS 13-15 Electron vibrancy
+- 屏幕模糊: macOS 26+ Liquid Glass 毛玻璃效果, macOS 13-15 系统级模糊效果（具体实现方案由开发时调研决定，优先使用系统原生 API）
 - 持久化: electron-store
-- 测试: Vitest (单元/集成) + Playwright (E2E, 原生 Electron 支持)
+- 测试: Vitest (单元/集成) + Playwright (E2E, 原生 Electron 支持) + Playwright MCP (UI/视觉验证)
 - 包管理: npm
 
 ## 项目结构
@@ -24,7 +24,7 @@
   - generate-test-landmarks.ts — 从照片生成关键点 JSON
 - assets/
   - icons/ — tray-icon.png, tray-icon-alert.png, app-icon.icns
-  - sounds/ — gentle-chime.mp3, alert.mp3
+  - sounds/ — M1 使用系统提示音; 后续里程碑可能添加自定义音频
   - models/ — MediaPipe 模型（构建时下载）
 - test/
   - unit/ — 单元测试, 与 src/ 结构镜像
@@ -128,7 +128,7 @@ PostureStatus { isGood, violations[], confidence, timestamp }
   - [x] Phase 1.1: 项目脚手架 + 测试基础设施
   - [x] Phase 1.2: 摄像头和姿态检测
   - [x] Phase 1.3: 姿态分析引擎
-  - [ ] Phase 1.4: 简单校准
+  - [x] Phase 1.4: 简单校准
   - [ ] Phase 1.5: 模糊和提醒
   - [ ] Phase 1.6: 设置 UI
   - [ ] Phase 1.7: 主检测循环 + 端到端集成
@@ -151,7 +151,55 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 }
 ```
 
-## PostRet 测试策略
+## 开发流程
+
+每完成一个功能模块，必须按以下顺序执行。不允许跳过步骤 2-6，不允许积攒多个功能后再测试。
+
+1. **编写代码** — 实现功能模块
+2. **单元测试** — 对纯逻辑代码（utils, services）编写并运行 Vitest 单元测试
+3. **MCP 探索验证** — 通过 Playwright MCP 交互式操控应用，验证功能在实际界面中是否正常工作。用截图+AI 视觉判断视觉效果。**UI/视觉功能必须执行此步骤**
+4. **修复问题** — 如果 MCP 验证发现问题，修复后回到步骤 3
+5. **固化 E2E 脚本** — MCP 验证通过后，将操作步骤编写为 .spec.ts Playwright 测试脚本
+6. **运行全量测试** — `npm test`（单元+集成+E2E），确认无回归
+7. **Git 提交** — 功能 + 测试一起提交
+
+核心算法（angle-calculator, posture-rules, smoothing）采用 TDD：先写测试再写实现。
+每完成一个 Phase 的功能，对照该 Phase 的"测试 & 验收"清单逐条确认。
+
+## Playwright MCP 强制规则
+
+**所有涉及 UI 或视觉效果的功能，必须先通过 Playwright MCP 交互式验证，再编写自动化测试脚本。** 这是强制要求，不可跳过。
+
+必须使用 MCP 验证的场景（不限于此列表）：
+- 模糊覆盖窗口的视觉效果（Liquid Glass / 普通模糊）
+- 模糊的出现和渐变消除动画
+- 骨骼线叠加显示
+- 设置页面的布局、Tab 切换、控件交互
+- 校准向导的步骤流程和 UI 反馈
+- Tray 菜单的显示和交互
+- 系统通知的弹出
+
+可以跳过 MCP、直接写脚本的场景：
+- 纯数据逻辑（IPC 通信、配置读写、数值计算）
+- 无 UI 的单元测试
+
+## 测试策略
+
+### E2E 测试两种工具
+
+| 工具 | 适用场景 | 是否强制 |
+|------|---------|---------|
+| **Playwright MCP** (交互式) | 首次验证、视觉效果判断（截图+AI视觉）、探索性测试、调试 | **UI/视觉功能强制** |
+| **Playwright 脚本** (.spec.ts) | 回归测试、CI 自动运行、性能测试、大批量测试 | 所有 E2E 功能必须有脚本 |
+
+### 摄像头模拟
+
+E2E 和集成测试使用 Chromium 内置参数替代实时摄像头：
+```
+--use-fake-device-for-media-stream
+--use-fake-ui-for-media-stream
+--use-file-for-fake-video-capture=test/fixtures/videos/xxx.webm
+```
 
 ### Agent Team 测试架构
 
@@ -182,45 +230,12 @@ Agent Team 组成：
 3. **不是只跑 npm test** — agent 的职责不仅仅是运行已有测试，而是确保 plan 中列出的每一条验收标准都有对应的测试覆盖
 4. **报告覆盖缺口** — 如果某些验收标准无法通过自动化测试覆盖（如需要手动验证的视觉效果），在报告中明确标注为"需手动验证"
 
-### 最小开发循环
-
-1. **编写代码** — 实现功能模块
-2. **单元测试** — 对纯逻辑代码（utils, services）编写并运行 Vitest 单元测试
-3. **MCP 探索验证** — 通过 Playwright MCP 交互式操控应用，验证功能在实际界面中是否正常工作。对于有视觉效果的功能（模糊、骨骼线叠加等），用截图+AI 视觉判断
-4. **修复问题** — 如果 MCP 验证发现问题，修复后回到步骤 3
-5. **固化 E2E 脚本** — MCP 验证通过后，将操作步骤编写为 .spec.ts Playwright 测试脚本
-6. **运行全量测试** — `npm test`（单元+集成+E2E），确认无回归
-7. **Git 提交** — 功能 + 测试一起提交
-
-不允许跳过步骤 2-6。不允许积攒多个功能后再测试。
-核心算法（angle-calculator, posture-rules, smoothing）采用 TDD：先写测试再写实现。
-每完成一个 Phase 的功能，对照该 Phase 的"测试 & 验收"清单逐条确认。
-
-### E2E 测试两种工具
-
-| 工具 | 适用场景 |
-|------|---------|
-| **Playwright MCP** (交互式) | 首次验证、视觉效果判断（截图+AI视觉）、探索性测试、调试 |
-| **Playwright 脚本** (.spec.ts) | 回归测试、CI 自动运行、性能测试、大批量测试 |
-
-MCP 可以"看"截图判断模糊效果/骨骼线叠加等视觉效果，脚本做不到的视觉判断用 MCP 完成。
-具体流程见上方"最小开发循环"步骤 3-5。
-
-### 摄像头模拟
-
-E2E 和集成测试使用 Chromium 内置参数替代实时摄像头：
-```
---use-fake-device-for-media-stream
---use-fake-ui-for-media-stream
---use-file-for-fake-video-capture=test/fixtures/videos/xxx.webm
-```
-
 ## 关键技术风险
 
 | 风险 | 等级 | 应对策略 |
 |------|------|---------|
 | MediaPipe WASM 性能 | 高 | 默认 500ms 检测间隔(2FPS); 可降级 LITE 模型; 考虑 Web Worker |
-| electron-liquid-glass 兼容性 | 高 | 始终保留 vibrancy 降级方案; 锁定版本 |
+| Liquid Glass 兼容性 | 高 | 始终保留旧版 macOS 模糊降级方案; 自动检测系统版本 |
 | 屏幕角度估算精度 | 中 | 三信号加权+保守补偿+最大漂移上限+用 40 张照片调参 |
 | 误报导致用户反感 | 中 | 默认中等灵敏度+时间平滑+可配置延迟+低置信度帧忽略 |
 | macOS 摄像头权限 UX | 中 | 启动前检查+友好引导对话框+拒绝后手动开启指引 |
