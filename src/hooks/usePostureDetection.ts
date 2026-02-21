@@ -281,6 +281,17 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     }
   }, [releaseResources])
 
+  // Ensure camera is released when window is closing (app quit)
+  useEffect(() => {
+    const handleBeforeUnload = (): void => {
+      releaseResources()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [releaseResources])
+
   return {
     state,
     lastStatus,

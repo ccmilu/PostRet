@@ -162,7 +162,14 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  // Notify renderer to stop detection and release camera
+  settingsWindow?.sendPause()
+
   reminderManager?.dispose()
   blurController?.destroy()
   trayManager?.destroy()
+
+  // Destroy windows (removes close-prevention so app can exit cleanly)
+  settingsWindow?.destroy()
+  overlayWindow?.destroy()
 })
