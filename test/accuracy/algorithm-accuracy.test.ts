@@ -256,7 +256,12 @@ function printReport(
         details.push(`FN: ${r.falseNegatives.join(',')}`);
       }
       const detailStr = details.length > 0 ? ` (${details.join('; ')})` : '';
-      const devStr = `hf=${r.deviations.headForward.toFixed(1)} ht=${r.deviations.headTilt.toFixed(1)} ffr=${r.deviations.faceFrameRatio.toFixed(4)} nte=${r.deviations.noseToEarAvg.toFixed(4)} sd=${r.deviations.shoulderDiff.toFixed(1)}`;
+      // Compute combinedScore for forward head analysis
+      const nteScore = thresholds.forwardHeadNTE > 0 ? Math.max(0, r.deviations.noseToEarAvg) / thresholds.forwardHeadNTE : 0;
+      const ffrScore = thresholds.forwardHeadFFR > 0 ? Math.max(0, r.deviations.faceFrameRatio) / thresholds.forwardHeadFFR : 0;
+      const angleScore = thresholds.forwardHead > 0 ? Math.max(0, r.deviations.headForward) / thresholds.forwardHead : 0;
+      const combinedScore = 0.6 * nteScore + 0.2 * ffrScore + 0.2 * angleScore;
+      const devStr = `nte=${r.deviations.noseToEarAvg.toFixed(4)} ffr=${r.deviations.faceFrameRatio.toFixed(4)} hf=${r.deviations.headForward.toFixed(1)} | FH=${combinedScore.toFixed(2)} (nte=${nteScore.toFixed(2)} ffr=${ffrScore.toFixed(2)} angle=${angleScore.toFixed(2)}) | ht=${r.deviations.headTilt.toFixed(1)} sd=${r.deviations.shoulderDiff.toFixed(1)}`;
       console.log(
         `  Photo ${r.photoId}: ${status} | expected=[${r.expectedViolations.join(',')}] detected=[${r.detectedViolations.join(',')}]${detailStr} | ${devStr}`
       );
