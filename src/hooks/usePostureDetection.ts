@@ -80,6 +80,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const detectionSettingsRef = useRef<DetectionSettings | null>(null)
   const stateRef = useRef<DetectionState>('idle')
+  const initializingRef = useRef(false)
 
   // Keep stateRef in sync so interval callbacks see current state
   stateRef.current = state
@@ -145,14 +146,15 @@ export function usePostureDetection(): UsePostureDetectionReturn {
 
   const start = useCallback(
     async (calibration: CalibrationData, detection: DetectionSettings): Promise<void> => {
-      // Prevent concurrent starts
-      if (stateRef.current === 'initializing') {
+      // Prevent concurrent starts (use ref for synchronous check)
+      if (initializingRef.current) {
         return
       }
 
       // Clean up any previous session
       releaseResources()
 
+      initializingRef.current = true
       setState('initializing')
       setError(null)
       detectionSettingsRef.current = detection
@@ -163,6 +165,7 @@ export function usePostureDetection(): UsePostureDetectionReturn {
         try {
           stream = await acquireCameraStream()
         } catch (err) {
+          initializingRef.current = false
           setState('no-camera')
           const message = err instanceof Error ? err.message : 'Cannot access camera'
           setError(message)
@@ -170,22 +173,13 @@ export function usePostureDetection(): UsePostureDetectionReturn {
         }
         streamRef.current = stream
 
-        // Step 2: Create hidden video element and wait for video data
+        // Step 2: Create hidden video element and start playback
         const video = createHiddenVideoElement(stream)
         videoRef.current = video
-
         await video.play()
-        await new Promise<void>((resolve) => {
-          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-            resolve()
-            return
-          }
-          const onData = () => {
-            video.removeEventListener('loadeddata', onData)
-            resolve()
-          }
-          video.addEventListener('loadeddata', onData)
-        })
+
+        // Note: video.readyState is checked in each detection frame,
+        // so we don't block here waiting for video data.
 
         // Step 3: Initialize PoseDetector
         const detector = createPoseDetector()
@@ -201,9 +195,11 @@ export function usePostureDetection(): UsePostureDetectionReturn {
         analyzerRef.current = analyzer
 
         // Step 5: Start detection loop
+        initializingRef.current = false
         setState('detecting')
         startDetectionLoop(detection.intervalMs)
       } catch (err) {
+        initializingRef.current = false
         releaseResources()
         setState('error')
         const message =

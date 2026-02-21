@@ -49,6 +49,10 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.POSTURE_STATUS, (_event, status: PostureStatus) => {
+    // Auto-sync appStatus when renderer starts reporting posture
+    if (getAppStatus() !== 'detecting') {
+      setAppStatus('detecting')
+    }
     deps.onPostureStatus?.(status)
   })
 }
