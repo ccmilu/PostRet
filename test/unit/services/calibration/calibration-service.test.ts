@@ -233,4 +233,154 @@ describe('CalibrationService', () => {
       expect(sample).toEqual(copy)
     })
   })
+
+  describe('multi-angle collection', () => {
+    const signals90 = { faceY: 0.35, noseChinRatio: 0.29, eyeMouthRatio: 0.50 }
+    const signals110 = { faceY: 0.38, noseChinRatio: 0.31, eyeMouthRatio: 0.52 }
+    const signals130 = { faceY: 0.42, noseChinRatio: 0.34, eyeMouthRatio: 0.54 }
+
+    function collectAngle(
+      svc: CalibrationService,
+      label: number,
+      signals: { faceY: number; noseChinRatio: number; eyeMouthRatio: number },
+      sampleCount: number,
+    ): void {
+      svc.startAngleCollection(label)
+      for (let i = 0; i < sampleCount; i++) {
+        svc.addSample(createSample(), signals)
+      }
+      svc.completeCurrentAngle()
+    }
+
+    describe('startAngleCollection', () => {
+      it('resets samples for new angle', () => {
+        const svc = new CalibrationService({ totalSamples: 3 })
+        svc.addSample(createSample())
+        expect(svc.getProgress().sampleCount).toBe(1)
+
+        svc.startAngleCollection(90)
+        expect(svc.getProgress().sampleCount).toBe(0)
+      })
+    })
+
+    describe('completeCurrentAngle', () => {
+      it('throws when no angle collection in progress', () => {
+        expect(() => service.completeCurrentAngle()).toThrow('No angle collection in progress')
+      })
+
+      it('throws when no samples collected', () => {
+        service.startAngleCollection(90)
+        expect(() => service.completeCurrentAngle()).toThrow('no samples collected')
+      })
+
+      it('increments angle collection count', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        expect(svc.getAngleCollectionCount()).toBe(0)
+
+        collectAngle(svc, 90, signals90, 2)
+        expect(svc.getAngleCollectionCount()).toBe(1)
+
+        collectAngle(svc, 110, signals110, 2)
+        expect(svc.getAngleCollectionCount()).toBe(2)
+      })
+    })
+
+    describe('computeMultiAngleBaseline', () => {
+      it('throws when no angle collections exist', () => {
+        expect(() => service.computeMultiAngleBaseline()).toThrow('no angle collections')
+      })
+
+      it('computes baseline from first angle collection', () => {
+        const svc = new CalibrationService({ totalSamples: 3 })
+        collectAngle(svc, 90, signals90, 3)
+        collectAngle(svc, 110, signals110, 3)
+        collectAngle(svc, 130, signals130, 3)
+
+        const result = svc.computeMultiAngleBaseline()
+        // Baseline posture angles should be mean of first angle's samples
+        expect(result.baseline.headForwardAngle).toBeCloseTo(5.0, 1)
+        expect(result.baseline.torsoAngle).toBeCloseTo(3.0, 1)
+      })
+
+      it('returns screenAngleReferences for all collected angles', () => {
+        const svc = new CalibrationService({ totalSamples: 3 })
+        collectAngle(svc, 90, signals90, 3)
+        collectAngle(svc, 110, signals110, 3)
+        collectAngle(svc, 130, signals130, 3)
+
+        const result = svc.computeMultiAngleBaseline()
+        expect(result.screenAngleReferences).toHaveLength(3)
+        expect(result.screenAngleReferences[0].angle).toBe(90)
+        expect(result.screenAngleReferences[1].angle).toBe(110)
+        expect(result.screenAngleReferences[2].angle).toBe(130)
+      })
+
+      it('computes average signals for each angle reference', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        collectAngle(svc, 90, signals90, 2)
+
+        const result = svc.computeMultiAngleBaseline()
+        expect(result.screenAngleReferences[0].signals.faceY).toBeCloseTo(signals90.faceY, 2)
+        expect(result.screenAngleReferences[0].signals.noseChinRatio).toBeCloseTo(signals90.noseChinRatio, 2)
+        expect(result.screenAngleReferences[0].signals.eyeMouthRatio).toBeCloseTo(signals90.eyeMouthRatio, 2)
+      })
+
+      it('includes screenAngleReferences in baseline CalibrationData', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        collectAngle(svc, 90, signals90, 2)
+        collectAngle(svc, 110, signals110, 2)
+
+        const result = svc.computeMultiAngleBaseline()
+        expect(result.baseline.screenAngleReferences).toBeDefined()
+        expect(result.baseline.screenAngleReferences).toHaveLength(2)
+      })
+
+      it('includes valid timestamp in baseline', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        collectAngle(svc, 90, signals90, 2)
+
+        const before = Date.now()
+        const result = svc.computeMultiAngleBaseline()
+        const after = Date.now()
+        expect(result.baseline.timestamp).toBeGreaterThanOrEqual(before)
+        expect(result.baseline.timestamp).toBeLessThanOrEqual(after)
+      })
+
+      it('returns stdDev from first angle collection', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        svc.startAngleCollection(90)
+        svc.addSample(createSample({ headForwardAngle: 4.0 }), signals90)
+        svc.addSample(createSample({ headForwardAngle: 6.0 }), signals90)
+        svc.completeCurrentAngle()
+
+        const result = svc.computeMultiAngleBaseline()
+        // stdDev of [4, 6] = 1.0
+        expect(result.sampleStdDev.headForwardAngle).toBeCloseTo(1.0, 1)
+      })
+    })
+
+    describe('reset clears angle collections', () => {
+      it('clears angle collections on reset', () => {
+        const svc = new CalibrationService({ totalSamples: 2 })
+        collectAngle(svc, 90, signals90, 2)
+        expect(svc.getAngleCollectionCount()).toBe(1)
+
+        svc.reset()
+        expect(svc.getAngleCollectionCount()).toBe(0)
+        expect(() => svc.computeMultiAngleBaseline()).toThrow()
+      })
+    })
+
+    describe('addSample with screenAngleSignals', () => {
+      it('accepts samples with screen angle signals', () => {
+        const progress = service.addSample(createSample(), signals90)
+        expect(progress.sampleCount).toBe(1)
+      })
+
+      it('accepts samples without screen angle signals (backward compatible)', () => {
+        const progress = service.addSample(createSample())
+        expect(progress.sampleCount).toBe(1)
+      })
+    })
+  })
 })

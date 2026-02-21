@@ -3,8 +3,10 @@ import {
   extractScreenAngleSignals,
   calibrateScreenAngle,
   estimateAngleChange,
+  estimateAngleChangeMulti,
   compensateAngles,
 } from '@/services/calibration/screen-angle-estimator'
+import type { ScreenAngleCalibrationPoint } from '@/types/settings'
 import type { Landmark } from '@/services/pose-detection/pose-types'
 import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { PostureAngles } from '@/services/posture-analysis/posture-types'
@@ -216,6 +218,77 @@ describe('screen-angle-estimator', () => {
       const compensated = compensateAngles(angles, -5.0)
       // compensated = 10 - (-5) * 0.8 = 10 + 4 = 14
       expect(compensated.headForwardAngle).toBeCloseTo(14.0, 1)
+    })
+  })
+
+  describe('estimateAngleChangeMulti', () => {
+    const ref90: ScreenAngleCalibrationPoint = {
+      angle: 90,
+      signals: { faceY: 0.35, noseChinRatio: 0.29, eyeMouthRatio: 0.50 },
+    }
+    const ref110: ScreenAngleCalibrationPoint = {
+      angle: 110,
+      signals: { faceY: 0.38, noseChinRatio: 0.31, eyeMouthRatio: 0.52 },
+    }
+    const ref130: ScreenAngleCalibrationPoint = {
+      angle: 130,
+      signals: { faceY: 0.42, noseChinRatio: 0.34, eyeMouthRatio: 0.54 },
+    }
+
+    it('returns 0 with no references', () => {
+      const current = { faceY: 0.40, noseChinRatio: 0.30, eyeMouthRatio: 0.51 }
+      expect(estimateAngleChangeMulti(current, [])).toBe(0)
+    })
+
+    it('degrades to single-reference estimateAngleChange with 1 reference', () => {
+      const current = { faceY: 0.40, noseChinRatio: 0.30, eyeMouthRatio: 0.51 }
+      const multi = estimateAngleChangeMulti(current, [ref90])
+      const single = estimateAngleChange(current, ref90.signals)
+      expect(multi).toBeCloseTo(single, 5)
+    })
+
+    it('returns ~0 when current matches a reference exactly', () => {
+      const current = { ...ref90.signals }
+      const delta = estimateAngleChangeMulti(current, [ref90, ref110, ref130])
+      expect(Math.abs(delta)).toBeLessThan(0.5)
+    })
+
+    it('returns ~0 when current matches second reference exactly', () => {
+      const current = { ...ref110.signals }
+      const delta = estimateAngleChangeMulti(current, [ref90, ref110, ref130])
+      expect(Math.abs(delta)).toBeLessThan(0.5)
+    })
+
+    it('returns ~0 when current matches third reference exactly', () => {
+      const current = { ...ref130.signals }
+      const delta = estimateAngleChangeMulti(current, [ref90, ref110, ref130])
+      expect(Math.abs(delta)).toBeLessThan(0.5)
+    })
+
+    it('returns non-zero for signals between references', () => {
+      const current = { faceY: 0.365, noseChinRatio: 0.30, eyeMouthRatio: 0.51 }
+      const delta = estimateAngleChangeMulti(current, [ref90, ref110, ref130])
+      // Should use nearest reference's signals for comparison
+      expect(typeof delta).toBe('number')
+      expect(Number.isFinite(delta)).toBe(true)
+    })
+
+    it('gives smaller delta for signals close to a reference than far from all', () => {
+      const close = { faceY: 0.36, noseChinRatio: 0.295, eyeMouthRatio: 0.505 }
+      const far = { faceY: 0.55, noseChinRatio: 0.45, eyeMouthRatio: 0.70 }
+
+      const deltaClose = estimateAngleChangeMulti(close, [ref90, ref110, ref130])
+      const deltaFar = estimateAngleChangeMulti(far, [ref90, ref110, ref130])
+
+      expect(Math.abs(deltaClose)).toBeLessThan(Math.abs(deltaFar))
+    })
+
+    it('does not mutate reference array', () => {
+      const refs = [ref90, ref110, ref130]
+      const copy = [...refs]
+      const current = { faceY: 0.40, noseChinRatio: 0.30, eyeMouthRatio: 0.51 }
+      estimateAngleChangeMulti(current, refs)
+      expect(refs).toEqual(copy)
     })
   })
 

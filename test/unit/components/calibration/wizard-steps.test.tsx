@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { WelcomeStep } from '@/components/calibration/WelcomeStep'
 import { PositionCheckStep } from '@/components/calibration/PositionCheckStep'
+import { AngleInstructionStep } from '@/components/calibration/AngleInstructionStep'
 import { CollectStep } from '@/components/calibration/CollectStep'
 import { ConfirmStep } from '@/components/calibration/ConfirmStep'
 import type { PositionCheckResult } from '@/components/calibration/position-check'
@@ -137,6 +138,73 @@ describe('PositionCheckStep', () => {
   })
 })
 
+describe('AngleInstructionStep', () => {
+  it('renders with correct test id', () => {
+    render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={vi.fn()} />)
+    expect(screen.getByTestId('angle-instruction-step')).toBeInTheDocument()
+  })
+
+  it('displays angle counter (1/3)', () => {
+    render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={vi.fn()} />)
+    expect(screen.getByText(/1\/3/)).toBeInTheDocument()
+  })
+
+  it('displays angle counter (2/3)', () => {
+    render(<AngleInstructionStep angleIndex={1} angleLabel={110} onContinue={vi.fn()} />)
+    expect(screen.getByText(/2\/3/)).toBeInTheDocument()
+  })
+
+  it('displays angle counter (3/3)', () => {
+    render(<AngleInstructionStep angleIndex={2} angleLabel={130} onContinue={vi.fn()} />)
+    expect(screen.getByText(/3\/3/)).toBeInTheDocument()
+  })
+
+  it('displays description for 90 degree angle', () => {
+    render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={vi.fn()} />)
+    expect(screen.getByText(/90 度/)).toBeInTheDocument()
+    expect(screen.getByText(/垂直/)).toBeInTheDocument()
+  })
+
+  it('displays description for 110 degree angle', () => {
+    render(<AngleInstructionStep angleIndex={1} angleLabel={110} onContinue={vi.fn()} />)
+    expect(screen.getByText(/110 度/)).toBeInTheDocument()
+    expect(screen.getByText(/正常使用角度/)).toBeInTheDocument()
+  })
+
+  it('displays description for 130 degree angle', () => {
+    render(<AngleInstructionStep angleIndex={2} angleLabel={130} onContinue={vi.fn()} />)
+    expect(screen.getByText(/130 度/)).toBeInTheDocument()
+    expect(screen.getByText(/向后倾斜/)).toBeInTheDocument()
+  })
+
+  it('shows continue button with correct test id', () => {
+    render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={vi.fn()} />)
+    const btn = screen.getByTestId('angle-instruction-continue-btn')
+    expect(btn).toBeInTheDocument()
+    expect(btn).toHaveTextContent('继续采集')
+  })
+
+  it('calls onContinue when continue button is clicked', () => {
+    const onContinue = vi.fn()
+    render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={onContinue} />)
+
+    fireEvent.click(screen.getByTestId('angle-instruction-continue-btn'))
+
+    expect(onContinue).toHaveBeenCalledOnce()
+  })
+
+  it('displays fallback description for non-standard angle', () => {
+    render(<AngleInstructionStep angleIndex={0} angleLabel={100} onContinue={vi.fn()} />)
+    expect(screen.getByText(/100 度/)).toBeInTheDocument()
+  })
+
+  it('contains SVG icon', () => {
+    const { container } = render(<AngleInstructionStep angleIndex={0} angleLabel={90} onContinue={vi.fn()} />)
+    const svg = container.querySelector('svg')
+    expect(svg).toBeInTheDocument()
+  })
+})
+
 describe('CollectStep', () => {
   it('renders with correct test id', () => {
     render(<CollectStep progress={0} angleIndex={0} angleLabel={90} />)
@@ -177,6 +245,21 @@ describe('CollectStep', () => {
     const { container } = render(<CollectStep progress={0.5} angleIndex={0} angleLabel={90} />)
     const circles = container.querySelectorAll('circle')
     expect(circles.length).toBe(2) // background + progress
+  })
+
+  it('displays angle label with data-testid', () => {
+    render(<CollectStep progress={0.5} angleIndex={1} angleLabel={110} />)
+    const label = screen.getByTestId('collect-angle-label')
+    expect(label).toBeInTheDocument()
+    expect(label).toHaveTextContent('2/3')
+    expect(label).toHaveTextContent('110°')
+  })
+
+  it('shows correct angle info for third angle', () => {
+    render(<CollectStep progress={0.8} angleIndex={2} angleLabel={130} />)
+    const label = screen.getByTestId('collect-angle-label')
+    expect(label).toHaveTextContent('3/3')
+    expect(label).toHaveTextContent('130°')
   })
 })
 
