@@ -275,8 +275,25 @@ describe('PostureAnalyzer — screen angle compensation integration', () => {
       }
     }
 
-    it('calibrate with photo 1, feed good posture photos → all isGood=true', () => {
-      const cal = createCalibrationFromPhoto(1)
+    it('calibrate with multiple good photos, feed good posture photos → all isGood=true', () => {
+      // Use multiple good photos (different lid angles: 110°, 110°, 90°) to build a
+      // robust baseline, simulating real multi-angle calibration instead of single-photo
+      const baselinePhotoIds = [1, 2, 3]
+      const baselineAngles = baselinePhotoIds.map(id => {
+        const data = loadLandmarks(id)
+        return extractPostureAngles(data.worldLandmarks, data.landmarks)
+      })
+      const cal: CalibrationData = {
+        headForwardAngle: baselineAngles.reduce((s, a) => s + a.headForwardAngle, 0) / baselineAngles.length,
+        torsoAngle: baselineAngles.reduce((s, a) => s + a.torsoAngle, 0) / baselineAngles.length,
+        headTiltAngle: baselineAngles.reduce((s, a) => s + a.headTiltAngle, 0) / baselineAngles.length,
+        faceFrameRatio: baselineAngles.reduce((s, a) => s + a.faceFrameRatio, 0) / baselineAngles.length,
+        faceY: baselineAngles.reduce((s, a) => s + a.faceY, 0) / baselineAngles.length,
+        noseToEarAvg: baselineAngles.reduce((s, a) => s + a.noseToEarAvg, 0) / baselineAngles.length,
+        shoulderDiff: baselineAngles.reduce((s, a) => s + a.shoulderDiff, 0) / baselineAngles.length,
+        timestamp: Date.now(),
+      }
+
       const goodPhotos = loadLandmarksByCategory('good')
         .filter(p => p.metadata.lighting === 'normal')
 

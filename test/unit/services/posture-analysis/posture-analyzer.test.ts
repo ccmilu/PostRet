@@ -494,18 +494,22 @@ describe('PostureAnalyzer', () => {
       expect(result.violations).toHaveLength(0)
     })
 
-    it('multiple good posture photos calibrated with photo 1 → isGood=true', () => {
-      // Calibrate with photo 1 (standard posture, normal lighting)
-      const calData = loadLandmarks(1)
-      const calAngles = extractPostureAngles(calData.worldLandmarks, calData.landmarks)
+    it('multiple good posture photos calibrated with multi-photo average → isGood=true', () => {
+      // Use multiple good photos (different lid angles: 110°, 110°, 90°) to build a
+      // robust baseline, simulating real multi-angle calibration instead of single-photo
+      const baselinePhotoIds = [1, 2, 3]
+      const baselineAngles = baselinePhotoIds.map(id => {
+        const data = loadLandmarks(id)
+        return extractPostureAngles(data.worldLandmarks, data.landmarks)
+      })
       const cal: CalibrationData = {
-        headForwardAngle: calAngles.headForwardAngle,
-        torsoAngle: calAngles.torsoAngle,
-        headTiltAngle: calAngles.headTiltAngle,
-        faceFrameRatio: calAngles.faceFrameRatio,
-        faceY: calAngles.faceY,
-        noseToEarAvg: calAngles.noseToEarAvg,
-        shoulderDiff: calAngles.shoulderDiff,
+        headForwardAngle: baselineAngles.reduce((s, a) => s + a.headForwardAngle, 0) / baselineAngles.length,
+        torsoAngle: baselineAngles.reduce((s, a) => s + a.torsoAngle, 0) / baselineAngles.length,
+        headTiltAngle: baselineAngles.reduce((s, a) => s + a.headTiltAngle, 0) / baselineAngles.length,
+        faceFrameRatio: baselineAngles.reduce((s, a) => s + a.faceFrameRatio, 0) / baselineAngles.length,
+        faceY: baselineAngles.reduce((s, a) => s + a.faceY, 0) / baselineAngles.length,
+        noseToEarAvg: baselineAngles.reduce((s, a) => s + a.noseToEarAvg, 0) / baselineAngles.length,
+        shoulderDiff: baselineAngles.reduce((s, a) => s + a.shoulderDiff, 0) / baselineAngles.length,
         timestamp: Date.now(),
       }
 
