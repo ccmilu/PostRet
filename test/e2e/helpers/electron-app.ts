@@ -22,11 +22,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function tryLaunch(): Promise<ElectronApplication> {
+export interface LaunchOptions {
+  readonly maxRetries?: number
+  readonly extraArgs?: readonly string[]
+}
+
+async function tryLaunch(extraArgs: readonly string[] = []): Promise<ElectronApplication> {
   cleanupSingletonLock()
   const appPath = resolve(__dirname, '../../../dist-electron/main.js')
   return electron.launch({
-    args: [appPath],
+    args: [appPath, ...extraArgs],
     env: {
       ...process.env,
       NODE_ENV: 'test',
@@ -34,9 +39,14 @@ async function tryLaunch(): Promise<ElectronApplication> {
   })
 }
 
-export async function launchApp(maxRetries = 3): Promise<ElectronApplication> {
+export async function launchApp(maxRetriesOrOptions: number | LaunchOptions = 3): Promise<ElectronApplication> {
+  const opts = typeof maxRetriesOrOptions === 'number'
+    ? { maxRetries: maxRetriesOrOptions, extraArgs: [] as string[] }
+    : maxRetriesOrOptions
+  const maxRetries = opts.maxRetries ?? 3
+  const extraArgs = opts.extraArgs ?? []
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const app = await tryLaunch()
+    const app = await tryLaunch(extraArgs)
 
     // Verify the app is still running (SingletonLock failure causes immediate quit)
     const isRunning = app.process().pid !== undefined && !app.process().killed
@@ -55,5 +65,17 @@ export async function launchApp(maxRetries = 3): Promise<ElectronApplication> {
   }
 
   // Final attempt without retry
-  return tryLaunch()
+  return tryLaunch(extraArgs)
+}
+
+export async function launchAppWithFakeCamera(maxRetries = 3): Promise<ElectronApplication> {
+  const fakeVideoPath = resolve(__dirname, '../../fixtures/videos/good-posture.webm')
+  return launchApp({
+    maxRetries,
+    extraArgs: [
+      '--use-fake-device-for-media-stream',
+      '--use-fake-ui-for-media-stream',
+      `--use-file-for-fake-video-capture=${fakeVideoPath}`,
+    ],
+  })
 }

@@ -92,7 +92,7 @@ export class AdaptiveBaseline {
         maxDrift,
       )
 
-      ;(updated as Record<string, number>)[key] = originalValue + clampedDrift
+      ;(updated as unknown as Record<string, number>)[key] = originalValue + clampedDrift
     }
 
     return updated
