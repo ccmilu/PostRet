@@ -151,7 +151,7 @@ async function collectSamples(
 
         const angles = extractPostureAngles(
           frame.worldLandmarks,
-          frame.frameWidth,
+          frame.landmarks,
         )
         const progressInfo = calibrationService.addSample(angles)
         collected = progressInfo.sampleCount

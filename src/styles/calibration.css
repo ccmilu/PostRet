@@ -365,6 +365,13 @@
   z-index: 1;
 }
 
+/* --- Angle Instruction Step --- */
+
+.wizard-angle-instruction .wizard-welcome-icon {
+  color: #007aff;
+  margin-bottom: 4px;
+}
+
 /* --- Confirm Step --- */
 
 .wizard-confirm-icon {

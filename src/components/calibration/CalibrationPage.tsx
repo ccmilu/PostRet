@@ -3,6 +3,7 @@ import { useCalibrationWizard } from '@/hooks/useCalibrationWizard'
 import { PosePreview } from './PosePreview'
 import { WelcomeStep } from './WelcomeStep'
 import { PositionCheckStep } from './PositionCheckStep'
+import { AngleInstructionStep } from './AngleInstructionStep'
 import { CollectStep } from './CollectStep'
 import { ConfirmStep } from './ConfirmStep'
 
@@ -80,7 +81,10 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
     wizard.recalibrate()
   }, [wizard])
 
-  const showVideo = wizard.step === 2 || wizard.step === 3
+  const showVideo =
+    wizard.step === 'position-check' ||
+    wizard.step === 'angle-instruction' ||
+    wizard.step === 'collect'
 
   return (
     <div className="calibration-page" data-testid="calibration-wizard">
@@ -89,7 +93,7 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
         {[1, 2, 3, 4].map((s) => (
           <div
             key={s}
-            className={`wizard-step-dot ${s === wizard.step ? 'active' : ''} ${s < wizard.step ? 'completed' : ''}`}
+            className={`wizard-step-dot ${s === wizard.stepNumber ? 'active' : ''} ${s < wizard.stepNumber ? 'completed' : ''}`}
           />
         ))}
       </div>
@@ -123,7 +127,7 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
       )}
 
       {/* Single video element — always mounted to preserve stream binding.
-          Visible in steps 2 & 3, hidden (but still alive) in steps 1 & 4. */}
+          Visible in steps with camera, hidden otherwise. */}
       <div
         className={`calibration-preview-container ${showVideo && !cameraError ? '' : 'calibration-preview-hidden'}`}
       >
@@ -148,11 +152,11 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
       {/* Step content */}
       {!cameraError && !wizard.error && (
         <>
-          {wizard.step === 1 && (
+          {wizard.step === 'welcome' && (
             <WelcomeStep onStart={wizard.goToStep2} />
           )}
 
-          {wizard.step === 2 && (
+          {wizard.step === 'position-check' && (
             <PositionCheckStep
               positionResult={wizard.positionResult}
               canContinue={wizard.canContinue}
@@ -161,11 +165,23 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
             />
           )}
 
-          {wizard.step === 3 && (
-            <CollectStep progress={wizard.progress} />
+          {wizard.step === 'angle-instruction' && (
+            <AngleInstructionStep
+              angleIndex={wizard.angleIndex}
+              angleLabel={wizard.currentAngleLabel}
+              onContinue={wizard.startAngleCollect}
+            />
           )}
 
-          {wizard.step === 4 && (
+          {wizard.step === 'collect' && (
+            <CollectStep
+              progress={wizard.progress}
+              angleIndex={wizard.angleIndex}
+              angleLabel={wizard.currentAngleLabel}
+            />
+          )}
+
+          {wizard.step === 'confirm' && (
             <ConfirmStep
               onRecalibrate={handleRecalibrate}
               onConfirm={handleConfirm}

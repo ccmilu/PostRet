@@ -29,6 +29,15 @@ export interface ReminderSettings {
   readonly fadeOutDurationMs: number
 }
 
+export interface ScreenAngleCalibrationPoint {
+  readonly angle: number // estimated angle (90/110/130)
+  readonly signals: {
+    readonly faceY: number
+    readonly noseChinRatio: number
+    readonly eyeMouthRatio: number
+  }
+}
+
 export interface CalibrationData {
   readonly headForwardAngle: number
   readonly torsoAngle: number
@@ -41,6 +50,7 @@ export interface CalibrationData {
     readonly noseChinRatio: number
     readonly eyeMouthRatio: number
   }
+  readonly screenAngleReferences?: readonly ScreenAngleCalibrationPoint[]
 }
 
 export interface DisplaySettings {

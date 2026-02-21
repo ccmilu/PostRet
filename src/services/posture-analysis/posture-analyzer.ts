@@ -11,8 +11,10 @@ import type { ScreenAngleReference } from '@/services/calibration/screen-angle-e
 import {
   extractScreenAngleSignals,
   estimateAngleChange,
+  estimateAngleChangeMulti,
   compensateAngles,
 } from '@/services/calibration/screen-angle-estimator'
+import type { ScreenAngleCalibrationPoint } from '@/types/settings'
 import { AdaptiveBaseline } from '@/services/calibration/adaptive-baseline'
 
 // Landmarks essential for the primary posture checks (head-forward, head-tilt,
@@ -99,6 +101,7 @@ function hasLowVisibility(worldLandmarks: readonly Landmark[]): boolean {
 
 export interface AnalyzerOptions {
   readonly screenAngleReference?: ScreenAngleReference
+  readonly screenAngleReferences?: readonly ScreenAngleCalibrationPoint[]
 }
 
 export interface AnalyzeResult {
@@ -113,6 +116,7 @@ export class PostureAnalyzer {
   private ruleToggles: RuleToggles
   private filters: SmoothingFilters
   private screenAngleReference: ScreenAngleReference | null
+  private screenAngleReferences: readonly ScreenAngleCalibrationPoint[]
   private adaptiveBaseline: AdaptiveBaseline
   private lastTimestamp: number
 
@@ -127,6 +131,9 @@ export class PostureAnalyzer {
     this.ruleToggles = ruleToggles
     this.filters = createFilters()
     this.screenAngleReference = options?.screenAngleReference ?? null
+    this.screenAngleReferences = options?.screenAngleReferences
+      ?? calibration.screenAngleReferences
+      ?? []
     this.adaptiveBaseline = new AdaptiveBaseline(calibration)
     this.lastTimestamp = 0
   }
@@ -158,7 +165,7 @@ export class PostureAnalyzer {
     }
 
     // Step 2: Angle extraction
-    const rawAngles = extractPostureAngles(frame.worldLandmarks, frame.frameWidth)
+    const rawAngles = extractPostureAngles(frame.worldLandmarks, frame.landmarks)
 
     // Step 2.5: Screen angle compensation
     const compensatedAngles = this.applyScreenAngleCompensation(rawAngles, frame.landmarks)
@@ -233,6 +240,10 @@ export class PostureAnalyzer {
     this.screenAngleReference = reference
   }
 
+  updateScreenAngleReferences(references: readonly ScreenAngleCalibrationPoint[]): void {
+    this.screenAngleReferences = references
+  }
+
   updateSensitivity(sensitivity: number): void {
     this.sensitivity = sensitivity
   }
@@ -251,11 +262,19 @@ export class PostureAnalyzer {
     angles: PostureAngles,
     landmarks: readonly Landmark[]
   ): PostureAngles {
+    const currentSignals = extractScreenAngleSignals(landmarks)
+
+    // Prefer multi-reference interpolation if available
+    if (this.screenAngleReferences.length > 0) {
+      const pitchDelta = estimateAngleChangeMulti(currentSignals, this.screenAngleReferences)
+      return compensateAngles(angles, pitchDelta)
+    }
+
+    // Fall back to single reference
     if (this.screenAngleReference === null) {
       return angles
     }
 
-    const currentSignals = extractScreenAngleSignals(landmarks)
     const pitchDelta = estimateAngleChange(currentSignals, this.screenAngleReference)
     return compensateAngles(angles, pitchDelta)
   }

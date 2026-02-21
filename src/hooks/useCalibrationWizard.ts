@@ -2,10 +2,22 @@ import { useState, useCallback, useRef, useEffect, type RefObject } from 'react'
 import { createPoseDetector, type PoseDetector } from '@/services/pose-detection/pose-detector'
 import { CalibrationService } from '@/services/calibration/calibration-service'
 import { extractPostureAngles } from '@/services/posture-analysis/angle-calculator'
+import { extractScreenAngleSignals } from '@/services/calibration/screen-angle-estimator'
 import { checkFacePosition, type PositionCheckResult } from '@/components/calibration/position-check'
 import type { NormalizedLandmark } from '@/components/calibration/PosePreview'
 
-export type WizardStep = 1 | 2 | 3 | 4
+export type WizardStep =
+  | 'welcome'
+  | 'position-check'
+  | 'angle-instruction'
+  | 'collect'
+  | 'confirm'
+
+/** Legacy numeric step alias for backward compatibility in step indicator */
+export type WizardStepNumber = 1 | 2 | 3 | 4
+
+export const ANGLE_LABELS = [90, 110, 130] as const
+export const TOTAL_ANGLES = ANGLE_LABELS.length
 
 export interface UseCalibrationWizardOptions {
   readonly videoRef: RefObject<HTMLVideoElement | null>
@@ -13,13 +25,17 @@ export interface UseCalibrationWizardOptions {
 
 export interface UseCalibrationWizardReturn {
   readonly step: WizardStep
+  readonly stepNumber: WizardStepNumber
   readonly progress: number
   readonly error: string | null
   readonly positionResult: PositionCheckResult
   readonly canContinue: boolean
   readonly landmarks: NormalizedLandmark[][] | undefined
+  readonly angleIndex: number
+  readonly currentAngleLabel: number
   readonly goToStep2: () => void
   readonly goToStep3: () => void
+  readonly startAngleCollect: () => void
   readonly goBackToStep1: () => void
   readonly recalibrate: () => void
   readonly confirm: () => void
@@ -43,21 +59,37 @@ function hasElectronAPI(): boolean {
   )
 }
 
+function stepToNumber(step: WizardStep): WizardStepNumber {
+  switch (step) {
+    case 'welcome':
+      return 1
+    case 'position-check':
+      return 2
+    case 'angle-instruction':
+    case 'collect':
+      return 3
+    case 'confirm':
+      return 4
+  }
+}
+
 export function useCalibrationWizard(
   options: UseCalibrationWizardOptions,
 ): UseCalibrationWizardReturn {
-  const [step, setStep] = useState<WizardStep>(1)
+  const [step, setStep] = useState<WizardStep>('welcome')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [positionResult, setPositionResult] = useState<PositionCheckResult>(DEFAULT_POSITION_RESULT)
   const [canContinue, setCanContinue] = useState(false)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[][] | undefined>(undefined)
+  const [angleIndex, setAngleIndex] = useState(0)
 
   const detectorRef = useRef<PoseDetector | null>(null)
   const positionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const collectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const goodSinceRef = useRef<number | null>(null)
   const generationRef = useRef(0)
+  const calibrationServiceRef = useRef<CalibrationService | null>(null)
 
   const cleanupDetector = useCallback(() => {
     if (detectorRef.current !== null) {
@@ -164,21 +196,29 @@ export function useCalibrationWizard(
     }
   }, [])
 
-  // Collection logic for step 3
-  const startCollection = useCallback(async () => {
+  // Collection logic for a single angle
+  const startAngleCollection = useCallback(async (currentAngleIndex: number) => {
     const gen = ++generationRef.current
 
     try {
       const detector = await initDetector()
       if (gen !== generationRef.current) return
 
-      if (hasElectronAPI()) {
-        await window.electronAPI.startCalibration()
+      const label = ANGLE_LABELS[currentAngleIndex]
+
+      // Initialize calibration service on first angle
+      if (calibrationServiceRef.current === null) {
+        calibrationServiceRef.current = new CalibrationService({
+          totalSamples: TOTAL_SAMPLES,
+        })
+
+        if (hasElectronAPI()) {
+          await window.electronAPI.startCalibration()
+        }
       }
 
-      const calibrationService = new CalibrationService({
-        totalSamples: TOTAL_SAMPLES,
-      })
+      const service = calibrationServiceRef.current
+      service.startAngleCollection(label)
 
       setProgress(0)
 
@@ -206,9 +246,10 @@ export function useCalibrationWizard(
 
           const angles = extractPostureAngles(
             frame.worldLandmarks,
-            frame.frameWidth,
+            frame.landmarks,
           )
-          const progressInfo = calibrationService.addSample(angles)
+          const screenAngleSignals = extractScreenAngleSignals(frame.landmarks)
+          const progressInfo = service.addSample(angles, screenAngleSignals)
           setProgress(progressInfo.progress)
 
           if (progressInfo.complete) {
@@ -217,13 +258,24 @@ export function useCalibrationWizard(
               collectTimerRef.current = null
             }
 
-            const result = calibrationService.computeBaseline()
+            service.completeCurrentAngle()
 
-            if (hasElectronAPI()) {
-              window.electronAPI.completeCalibration(result.baseline)
+            const nextAngleIndex = currentAngleIndex + 1
+
+            if (nextAngleIndex < TOTAL_ANGLES) {
+              // Move to next angle instruction
+              setAngleIndex(nextAngleIndex)
+              setStep('angle-instruction')
+            } else {
+              // All angles collected, compute multi-angle baseline
+              const result = service.computeMultiAngleBaseline()
+
+              if (hasElectronAPI()) {
+                window.electronAPI.completeCalibration(result.baseline)
+              }
+
+              setStep('confirm')
             }
-
-            setStep(4)
           }
         } catch (err) {
           if (collectTimerRef.current !== null) {
@@ -242,23 +294,30 @@ export function useCalibrationWizard(
           clearInterval(collectTimerRef.current)
           collectTimerRef.current = null
           setError('采集超时，请重试')
-          setStep(1)
+          setStep('welcome')
         }
       }, timeoutMs)
     } catch (err) {
       if (gen !== generationRef.current) return
       setError(err instanceof Error ? err.message : '校准初始化失败')
-      setStep(1)
+      setStep('welcome')
     }
   }, [initDetector, options.videoRef, cleanupTimers])
 
   // Mock collection for non-Electron environment
-  const startMockCollection = useCallback(() => {
+  const startMockAngleCollection = useCallback((currentAngleIndex: number) => {
     const gen = ++generationRef.current
     setProgress(0)
 
+    // Initialize mock calibration service on first angle
+    if (calibrationServiceRef.current === null) {
+      calibrationServiceRef.current = new CalibrationService({
+        totalSamples: TOTAL_SAMPLES,
+      })
+    }
+
     const startTime = Date.now()
-    const mockDurationMs = 3000
+    const mockDurationMs = 2000
 
     collectTimerRef.current = setInterval(() => {
       if (gen !== generationRef.current) {
@@ -275,14 +334,22 @@ export function useCalibrationWizard(
           clearInterval(collectTimerRef.current)
           collectTimerRef.current = null
         }
-        setStep(4)
+
+        const nextAngleIndex = currentAngleIndex + 1
+
+        if (nextAngleIndex < TOTAL_ANGLES) {
+          setAngleIndex(nextAngleIndex)
+          setStep('angle-instruction')
+        } else {
+          setStep('confirm')
+        }
       }
     }, 100)
   }, [cleanupTimers])
 
   // Step transitions
   const goToStep2 = useCallback(() => {
-    setStep(2)
+    setStep('position-check')
     setError(null)
     setPositionResult(DEFAULT_POSITION_RESULT)
     setCanContinue(false)
@@ -290,39 +357,52 @@ export function useCalibrationWizard(
     startPositionCheck()
   }, [startPositionCheck])
 
+  // After position check passes, go to first angle instruction
   const goToStep3 = useCallback(() => {
     stopPositionCheck()
-    setStep(3)
+    setAngleIndex(0)
+    setStep('angle-instruction')
+    setError(null)
+    calibrationServiceRef.current = null
+  }, [stopPositionCheck])
+
+  // Start collecting for the current angle
+  const startAngleCollect = useCallback(() => {
+    setStep('collect')
     setError(null)
 
     if (hasElectronAPI()) {
-      startCollection()
+      startAngleCollection(angleIndex)
     } else {
-      startMockCollection()
+      startMockAngleCollection(angleIndex)
     }
-  }, [stopPositionCheck, startCollection, startMockCollection])
+  }, [angleIndex, startAngleCollection, startMockAngleCollection])
 
   const goBackToStep1 = useCallback(() => {
     cleanupTimers()
     generationRef.current++
-    setStep(1)
+    setStep('welcome')
     setError(null)
     setPositionResult(DEFAULT_POSITION_RESULT)
     setCanContinue(false)
     setLandmarks(undefined)
+    setAngleIndex(0)
     goodSinceRef.current = null
+    calibrationServiceRef.current = null
   }, [cleanupTimers])
 
   const recalibrate = useCallback(() => {
     cleanupTimers()
     generationRef.current++
-    setStep(1)
+    setStep('welcome')
     setProgress(0)
     setError(null)
     setPositionResult(DEFAULT_POSITION_RESULT)
     setCanContinue(false)
     setLandmarks(undefined)
+    setAngleIndex(0)
     goodSinceRef.current = null
+    calibrationServiceRef.current = null
   }, [cleanupTimers])
 
   const confirm = useCallback(() => {
@@ -331,13 +411,17 @@ export function useCalibrationWizard(
 
   return {
     step,
+    stepNumber: stepToNumber(step),
     progress,
     error,
     positionResult,
     canContinue,
     landmarks,
+    angleIndex,
+    currentAngleLabel: ANGLE_LABELS[angleIndex] ?? ANGLE_LABELS[0],
     goToStep2,
     goToStep3,
+    startAngleCollect,
     goBackToStep1,
     recalibrate,
     confirm,

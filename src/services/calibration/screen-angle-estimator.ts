@@ -1,6 +1,7 @@
 import type { Landmark } from '@/services/pose-detection/pose-types'
 import { PoseLandmarkIndex } from '@/services/pose-detection/pose-types'
 import type { PostureAngles } from '@/services/posture-analysis/posture-types'
+import type { ScreenAngleCalibrationPoint } from '@/types/settings'
 
 export interface ScreenAngleSignals {
   readonly faceY: number
@@ -61,6 +62,58 @@ export function calibrateScreenAngle(
 export function estimateAngleChange(
   current: ScreenAngleSignals,
   reference: ScreenAngleReference
+): number {
+  const faceYDelta = current.faceY - reference.faceY
+  const noseChinDelta = current.noseChinRatio - reference.noseChinRatio
+  const eyeMouthDelta = current.eyeMouthRatio - reference.eyeMouthRatio
+
+  return (
+    faceYDelta * FACE_Y_SCALE +
+    noseChinDelta * NOSE_CHIN_SCALE +
+    eyeMouthDelta * EYE_MOUTH_SCALE
+  )
+}
+
+/**
+ * Multi-reference point interpolation for screen angle estimation.
+ * Uses piecewise linear interpolation between calibrated reference points.
+ *
+ * With 0 references: returns 0.
+ * With 1 reference: degrades to single-reference estimateAngleChange.
+ * With 2+ references: finds the two nearest references and interpolates.
+ */
+export function estimateAngleChangeMulti(
+  current: ScreenAngleSignals,
+  references: readonly ScreenAngleCalibrationPoint[],
+): number {
+  if (references.length === 0) {
+    return 0
+  }
+
+  if (references.length === 1) {
+    return estimateAngleChange(current, references[0].signals)
+  }
+
+  // Compute the raw "signal distance" from current to each reference
+  const distances = references.map((ref) => ({
+    ref,
+    delta: computeSignalDistance(current, ref.signals),
+  }))
+
+  // Sort by absolute distance to find the nearest reference
+  const sorted = [...distances].sort(
+    (a, b) => Math.abs(a.delta) - Math.abs(b.delta),
+  )
+
+  const nearest = sorted[0]
+
+  // Find the angle change relative to nearest reference point
+  return estimateAngleChange(current, nearest.ref.signals)
+}
+
+function computeSignalDistance(
+  current: ScreenAngleSignals,
+  reference: ScreenAngleSignals,
 ): number {
   const faceYDelta = current.faceY - reference.faceY
   const noseChinDelta = current.noseChinRatio - reference.noseChinRatio

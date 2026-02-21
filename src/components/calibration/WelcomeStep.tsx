@@ -24,7 +24,7 @@ export function WelcomeStep({ onStart }: WelcomeStepProps) {
       <h2 className="wizard-step-title">姿态校准</h2>
 
       <p className="wizard-step-description">
-        记录你的标准坐姿，作为后续检测的基准。
+        记录你的标准坐姿，在 3 个屏幕角度下分别采样，提高检测精度。
       </p>
 
       <div className="wizard-welcome-tips">
@@ -38,7 +38,7 @@ export function WelcomeStep({ onStart }: WelcomeStepProps) {
         </div>
         <div className="wizard-tip">
           <span className="wizard-tip-number">3</span>
-          <span className="wizard-tip-text">采集过程约 5 秒，请保持姿势不动</span>
+          <span className="wizard-tip-text">按提示调整屏幕开合角度（约 90°/110°/130°），每个角度采集约 5 秒</span>
         </div>
       </div>
 
