@@ -36,6 +36,11 @@ export interface CalibrationData {
   readonly faceFrameRatio: number
   readonly shoulderDiff: number
   readonly timestamp: number
+  readonly screenAngleReference?: {
+    readonly faceY: number
+    readonly noseChinRatio: number
+    readonly eyeMouthRatio: number
+  }
 }
 
 export interface DisplaySettings {
