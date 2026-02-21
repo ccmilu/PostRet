@@ -1,0 +1,211 @@
+import { render, screen, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { DEFAULT_SETTINGS, type CalibrationData, type PostureSettings } from '@/types/settings'
+import type { UsePostureDetectionReturn, DetectionState } from '@/hooks/usePostureDetection'
+import type { UseSettingsReturn } from '@/hooks/useSettings'
+
+// --- Mocks ---
+
+const mockDetection: UsePostureDetectionReturn = {
+  state: 'idle' as DetectionState,
+  lastStatus: null,
+  error: null,
+  start: vi.fn().mockResolvedValue(undefined),
+  stop: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
+  updateDetectionSettings: vi.fn(),
+  updateCalibration: vi.fn(),
+}
+
+const MOCK_CALIBRATION: CalibrationData = {
+  headForwardAngle: 10,
+  torsoAngle: 5,
+  headTiltAngle: 0,
+  faceFrameRatio: 0.15,
+  shoulderDiff: 0,
+  timestamp: Date.now(),
+}
+
+let mockSettings: PostureSettings = { ...DEFAULT_SETTINGS }
+let mockLoading = false
+
+const mockUseSettings: UseSettingsReturn = {
+  settings: mockSettings,
+  loading: mockLoading,
+  error: null,
+  updateSettings: vi.fn().mockResolvedValue(undefined),
+  updateDetection: vi.fn().mockResolvedValue(undefined),
+  updateReminder: vi.fn().mockResolvedValue(undefined),
+}
+
+vi.mock('@/hooks/usePostureDetection', () => ({
+  usePostureDetection: () => mockDetection,
+}))
+
+vi.mock('@/hooks/useSettings', () => ({
+  useSettings: () => ({
+    ...mockUseSettings,
+    settings: mockSettings,
+    loading: mockLoading,
+  }),
+}))
+
+vi.mock('@/components/settings/SettingsLayout', () => ({
+  SettingsLayout: ({ onStartCalibration }: { onStartCalibration?: () => void }) => (
+    <div data-testid="settings-layout">
+      <button data-testid="start-calibration-btn" onClick={onStartCalibration}>
+        Start Calibration
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock('@/components/calibration/CalibrationPage', () => ({
+  CalibrationPage: ({ onComplete }: { onComplete?: () => void }) => (
+    <div data-testid="calibration-page">
+      <button data-testid="calibration-complete-btn" onClick={onComplete}>
+        Complete
+      </button>
+    </div>
+  ),
+}))
+
+// Import after mocks
+import { App } from '@/App'
+
+describe('App', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDetection.state = 'idle'
+    mockDetection.lastStatus = null
+    mockDetection.error = null
+    mockSettings = { ...DEFAULT_SETTINGS }
+    mockLoading = false
+  })
+
+  describe('page rendering', () => {
+    it('should render settings page by default', () => {
+      render(<App />)
+      expect(screen.getByTestId('settings-layout')).toBeTruthy()
+    })
+
+    it('should switch to calibration page when start calibration is clicked', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByTestId('start-calibration-btn'))
+
+      expect(screen.getByTestId('calibration-page')).toBeTruthy()
+    })
+
+    it('should switch back to settings after calibration completes', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByTestId('start-calibration-btn'))
+      expect(screen.getByTestId('calibration-page')).toBeTruthy()
+
+      await user.click(screen.getByTestId('calibration-complete-btn'))
+      expect(screen.getByTestId('settings-layout')).toBeTruthy()
+    })
+  })
+
+  describe('auto-start detection', () => {
+    it('should auto-start detection when calibration data exists and not loading', () => {
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      render(<App />)
+
+      expect(mockDetection.start).toHaveBeenCalledWith(
+        MOCK_CALIBRATION,
+        mockSettings.detection,
+      )
+    })
+
+    it('should not start detection while loading', () => {
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+      mockLoading = true
+
+      render(<App />)
+
+      expect(mockDetection.start).not.toHaveBeenCalled()
+    })
+
+    it('should not start detection without calibration data', () => {
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: null }
+      mockLoading = false
+
+      render(<App />)
+
+      expect(mockDetection.start).not.toHaveBeenCalled()
+    })
+
+    it('should not start detection when already detecting', () => {
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+      mockLoading = false
+      mockDetection.state = 'detecting'
+
+      render(<App />)
+
+      expect(mockDetection.start).not.toHaveBeenCalled()
+    })
+
+    it('should not start detection when detection is disabled', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+
+      render(<App />)
+
+      expect(mockDetection.start).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('settings sync', () => {
+    it('should sync detection settings when detecting', () => {
+      mockDetection.state = 'detecting'
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+
+      render(<App />)
+
+      expect(mockDetection.updateDetectionSettings).toHaveBeenCalledWith(
+        mockSettings.detection,
+      )
+    })
+
+    it('should sync calibration when detecting', () => {
+      mockDetection.state = 'detecting'
+      mockSettings = { ...DEFAULT_SETTINGS, calibration: MOCK_CALIBRATION }
+
+      render(<App />)
+
+      expect(mockDetection.updateCalibration).toHaveBeenCalledWith(MOCK_CALIBRATION)
+    })
+
+    it('should not sync settings when idle', () => {
+      mockDetection.state = 'idle'
+      mockSettings = { ...DEFAULT_SETTINGS }
+
+      render(<App />)
+
+      expect(mockDetection.updateDetectionSettings).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('calibration flow', () => {
+    it('should stop detection when navigating to calibration', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByTestId('start-calibration-btn'))
+
+      expect(mockDetection.stop).toHaveBeenCalled()
+    })
+  })
+})
