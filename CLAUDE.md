@@ -46,6 +46,7 @@
   - `app:pause` / `app:resume` — main→renderer, 暂停/恢复检测
 - 完全本地处理，不上传任何图像/数据到云端
 - 屏幕角度自适应: faceY(0.5) + noseChinRatio(0.3) + eyeMouthRatio(0.2) 三信号加权估算摄像头俯仰角变化, 补偿系数 headForward×0.8（torsoSlouch×0.5 暂不启用，待多摄像头支持）
+- 多角度校准: 校准向导在 3 个屏幕开合角度（约 90°/110°/130°）分别采样，用真实数据拟合补偿曲线（分段线性插值），替代单点校准+固定系数外推
 - 多屏幕检测: 鼠标位置(权重0.6) + 头部朝向(权重0.4) 融合判断, 1.5秒迟滞防抖
 - 自适应基准线: 良好姿态持续30秒后以学习率0.001漂移, 最大漂移5度
 
@@ -175,6 +176,17 @@ PostureStatus { isGood, violations[], confidence, timestamp }
 - 共享状态必须用 Context/Provider，并测试多组件间状态同步
 - async 流程必须支持取消（generation counter / AbortController），并测试取消场景
 - mock 数据必须反映真实场景（如 MediaPipe landmarks 的真实 visibility 分布）
+
+## 测试数据规则：真实照片优先
+
+`test/fixtures/photos/` 包含 40 张带标签照片（good/forward_head/head_tilt/edge_case），`test/fixtures/videos/` 包含测试视频。这些是真实拍摄的测试素材。
+
+**核心规则：**
+- 算法相关测试（角度计算、姿态规则、屏幕角度估算、姿态分析器）必须使用从真实照片提取的 landmarks 数据，禁止用手工编造的坐标
+- `test/fixtures/photos/*.landmarks.json` 存放每张照片的 MediaPipe 提取结果，通过 `npm run generate-landmarks` 生成
+- `test/helpers/load-landmarks.ts` 提供统一的加载接口，测试中通过 `loadLandmarks(photoId)` 获取真实数据
+- 手工 mock landmarks 仅允许用于：UI 渲染测试（PosePreview）、性能测试、Hook 逻辑测试等不关心算法精度的场景
+- 新增算法测试时，必须选择对应类别的真实照片数据（如测试 forward_head 规则用 02-forward-head 目录的照片）
 
 **每个 Phase 完成后强制检查：**
 - [ ] 有 Playwright E2E 在真实 Electron 环境走通核心用户流程？
