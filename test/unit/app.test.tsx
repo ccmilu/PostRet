@@ -185,6 +185,78 @@ describe('App', () => {
     })
   })
 
+  describe('detection enabled toggle', () => {
+    it('should stop detection when enabled changes to false while detecting', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+      mockDetection.state = 'detecting'
+
+      render(<App />)
+
+      expect(mockDetection.stop).toHaveBeenCalled()
+    })
+
+    it('should stop detection when enabled changes to false while paused', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+      mockDetection.state = 'paused'
+
+      render(<App />)
+
+      expect(mockDetection.stop).toHaveBeenCalled()
+    })
+
+    it('should stop detection when enabled changes to false while initializing', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+      mockDetection.state = 'initializing'
+
+      render(<App />)
+
+      expect(mockDetection.stop).toHaveBeenCalled()
+    })
+
+    it('should not stop detection when enabled is false but state is idle', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = false
+      mockDetection.state = 'idle'
+
+      render(<App />)
+
+      expect(mockDetection.stop).not.toHaveBeenCalled()
+    })
+
+    it('should not stop when still loading even if enabled is false', () => {
+      mockSettings = {
+        ...DEFAULT_SETTINGS,
+        calibration: MOCK_CALIBRATION,
+        detection: { ...DEFAULT_SETTINGS.detection, enabled: false },
+      }
+      mockLoading = true
+      mockDetection.state = 'detecting'
+
+      render(<App />)
+
+      expect(mockDetection.stop).not.toHaveBeenCalled()
+    })
+  })
+
   describe('settings sync', () => {
     it('should sync detection settings when detecting', () => {
       mockDetection.state = 'detecting'

@@ -381,6 +381,87 @@ describe('usePostureDetection', () => {
       expect(result.current.lastStatus?.violations[0].rule).toBe('FORWARD_HEAD')
     })
 
+    it('should update lastAngles and lastDeviations from analyzeDetailed result', async () => {
+      const expectedAngles = {
+        headForwardAngle: 22,
+        torsoAngle: 8,
+        headTiltAngle: 3.5,
+        faceFrameRatio: 0.18,
+        shoulderDiff: 2.1,
+      }
+      const expectedDeviations = {
+        headForward: 12,
+        torsoSlouch: 3,
+        headTilt: 3.5,
+        faceFrameRatio: 0.03,
+        shoulderDiff: 2.1,
+      }
+      mockPostureAnalyzerInstance.analyzeDetailed.mockReturnValue({
+        status: createMockPostureStatus({ isGood: false }),
+        angles: expectedAngles,
+        deviations: expectedDeviations,
+      })
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+
+      expect(result.current.lastAngles).toEqual(expectedAngles)
+      expect(result.current.lastDeviations).toEqual(expectedDeviations)
+    })
+
+    it('should not update data when detect returns null (e.g. low visibility)', async () => {
+      // First tick: return valid data
+      const validResult = {
+        status: createMockPostureStatus({ isGood: true }),
+        angles: {
+          headForwardAngle: 10,
+          torsoAngle: 5,
+          headTiltAngle: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+        deviations: {
+          headForward: 0,
+          torsoSlouch: 0,
+          headTilt: 0,
+          faceFrameRatio: 0.15,
+          shoulderDiff: 0,
+        },
+      }
+      mockPostureAnalyzerInstance.analyzeDetailed.mockReturnValue(validResult)
+
+      const { result } = renderHook(() => usePostureDetection())
+
+      await act(async () => {
+        await result.current.start(MOCK_CALIBRATION, MOCK_DETECTION_SETTINGS)
+      })
+
+      // First detection tick: valid data
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+
+      expect(result.current.lastAngles).toEqual(validResult.angles)
+
+      // Now make detect return null (simulating low visibility frames)
+      ;(mockDetector.detect as ReturnType<typeof vi.fn>).mockReturnValue(null)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+
+      // Data should still be the previous valid result, not reset to null
+      expect(result.current.lastAngles).toEqual(validResult.angles)
+      expect(result.current.lastDeviations).toEqual(validResult.deviations)
+    })
+
     it('should run multiple detection cycles', async () => {
       const { result } = renderHook(() => usePostureDetection())
 
