@@ -119,7 +119,7 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     // Tips
     await expect(settingsPage.locator('text=坐正身体')).toBeVisible()
     await expect(settingsPage.locator('text=确保面部正对摄像头')).toBeVisible()
-    await expect(settingsPage.locator('text=采集过程约 5 秒')).toBeVisible()
+    await expect(settingsPage.locator('text=按提示调整屏幕开合角度')).toBeVisible()
 
     // Start button
     const startBtn = settingsPage.locator('[data-testid="wizard-start-btn"]')
@@ -233,7 +233,7 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     await expect(step1).toBeVisible({ timeout: 3000 })
   })
 
-  test('Steps 2→3→4: Complete calibration flow', async () => {
+  test('Steps 2→3→4: Complete multi-angle calibration flow', async () => {
     if (!canProceedPastStep2) {
       // Cannot test full flow without MediaPipe — gracefully skip
       return
@@ -253,24 +253,64 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     // Step 2: bypass position check
     await bypassPositionCheckIfNeeded()
 
-    // Step 2 → 3
+    // Step 2 → angle-instruction (first angle)
     const continueBtn = settingsPage.locator('[data-testid="wizard-continue-btn"]')
     await continueBtn.click()
 
-    const step3 = settingsPage.locator('[data-testid="wizard-step-3"]')
-    await expect(step3).toBeVisible({ timeout: 5000 })
-
-    // Verify step 3 content
-    await expect(settingsPage.locator('text=正在采集')).toBeVisible()
-    await expect(settingsPage.locator('text=请保持姿势不动')).toBeVisible()
-
-    const progressRing = settingsPage.locator('[data-testid="calibration-progress-ring"]')
-    await expect(progressRing).toBeVisible()
-
     const video = settingsPage.locator('[data-testid="calibration-video"]')
-    await expect(video).toBeVisible()
 
-    // Step 3 → 4 (auto-advance after collection)
+    // Multi-angle flow: [angle-instruction → collect] × 3
+    const angleLabels = [90, 110, 130]
+
+    for (let i = 0; i < 3; i++) {
+      // Expect angle-instruction step
+      const angleInstruction = settingsPage.locator('[data-testid="angle-instruction-step"]')
+      await expect(angleInstruction).toBeVisible({ timeout: 10000 })
+
+      // Verify angle counter
+      await expect(settingsPage.locator(`text=${i + 1}/3`)).toBeVisible()
+
+      // Verify angle description
+      await expect(settingsPage.locator(`text=${angleLabels[i]} 度`)).toBeVisible()
+
+      // Video should be visible during angle-instruction
+      await expect(video).toBeVisible()
+
+      // Click continue to start collection
+      const angleContinueBtn = settingsPage.locator('[data-testid="angle-instruction-continue-btn"]')
+      await expect(angleContinueBtn).toBeVisible()
+      await angleContinueBtn.click()
+
+      // Expect collect step
+      const step3 = settingsPage.locator('[data-testid="wizard-step-3"]')
+      await expect(step3).toBeVisible({ timeout: 5000 })
+
+      // Verify collect step content
+      await expect(settingsPage.locator('text=正在采集')).toBeVisible()
+      await expect(settingsPage.locator('text=请保持姿势不动')).toBeVisible()
+
+      const progressRing = settingsPage.locator('[data-testid="calibration-progress-ring"]')
+      await expect(progressRing).toBeVisible()
+
+      // Verify angle label on collect step
+      const collectAngleLabel = settingsPage.locator('[data-testid="collect-angle-label"]')
+      await expect(collectAngleLabel).toBeVisible()
+      await expect(collectAngleLabel).toContainText(`${angleLabels[i]}°`)
+
+      // Video should be visible during collection
+      await expect(video).toBeVisible()
+
+      // Wait for collection to complete (auto-advances to next angle-instruction or confirm)
+      // In non-Electron mock mode, each angle takes ~2s; in real mode ~3s
+      // The next step will be either angle-instruction (for angles 0,1) or confirm (for angle 2)
+      if (i < 2) {
+        await expect(
+          settingsPage.locator('[data-testid="angle-instruction-step"]'),
+        ).toBeVisible({ timeout: 15000 })
+      }
+    }
+
+    // After all 3 angles, should go to confirm (step 4)
     const step4 = settingsPage.locator('[data-testid="wizard-step-4"]')
     await expect(step4).toBeVisible({ timeout: 15000 })
 
@@ -309,7 +349,7 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     const step1 = settingsPage.locator('[data-testid="wizard-step-1"]')
     if (!(await step1.isVisible())) return
 
-    // Step 1 → 2 → 3 → 4
+    // Step 1 → 2
     await settingsPage.locator('[data-testid="wizard-start-btn"]').click()
 
     const state = await waitForPostStartState()
@@ -318,6 +358,31 @@ test.describe('Calibration Wizard (4-step flow)', () => {
     await bypassPositionCheckIfNeeded()
     await settingsPage.locator('[data-testid="wizard-continue-btn"]').click()
 
+    // Multi-angle flow: [angle-instruction → collect] × 3
+    for (let i = 0; i < 3; i++) {
+      // Wait for angle-instruction
+      await expect(
+        settingsPage.locator('[data-testid="angle-instruction-step"]'),
+      ).toBeVisible({ timeout: 15000 })
+
+      // Click continue to start collection
+      await settingsPage.locator('[data-testid="angle-instruction-continue-btn"]').click()
+
+      // Wait for collect to start
+      await expect(
+        settingsPage.locator('[data-testid="wizard-step-3"]'),
+      ).toBeVisible({ timeout: 5000 })
+
+      // Wait for collection to complete
+      if (i < 2) {
+        // Next angle-instruction
+        await expect(
+          settingsPage.locator('[data-testid="angle-instruction-step"]'),
+        ).toBeVisible({ timeout: 15000 })
+      }
+    }
+
+    // After all 3 angles → step 4
     const step4 = settingsPage.locator('[data-testid="wizard-step-4"]')
     await expect(step4).toBeVisible({ timeout: 15000 })
 
