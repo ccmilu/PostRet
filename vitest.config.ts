@@ -22,6 +22,8 @@ export default defineConfig({
         '**/*.d.ts',
         'electron/main.ts',
         'electron/preload.ts',
+        'electron/tray/tray-manager.ts',
+        'electron/windows/settings-window.ts',
       ],
       thresholds: {
         lines: 80,
