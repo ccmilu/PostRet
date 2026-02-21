@@ -15,10 +15,21 @@ export class SettingsWindow {
       this.window.focus()
       return
     }
-    this.createWindow()
+    this.createWindow({ showOnReady: true })
   }
 
-  private createWindow(): void {
+  /**
+   * Ensure the renderer process is loaded (for background detection)
+   * without showing the window to the user.
+   */
+  ensureCreated(): void {
+    if (this.window && !this.window.isDestroyed()) {
+      return
+    }
+    this.createWindow({ showOnReady: false })
+  }
+
+  private createWindow({ showOnReady }: { showOnReady: boolean }): void {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize
 
     this.window = new BrowserWindow({
@@ -46,9 +57,11 @@ export class SettingsWindow {
       this.window.loadFile(join(__dirname, '../dist/index.html'))
     }
 
-    this.window.once('ready-to-show', () => {
-      this.window?.show()
-    })
+    if (showOnReady) {
+      this.window.once('ready-to-show', () => {
+        this.window?.show()
+      })
+    }
 
     // Hide instead of close (Tray app behavior)
     this.window.on('close', (e) => {

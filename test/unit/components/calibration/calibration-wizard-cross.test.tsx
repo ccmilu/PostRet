@@ -196,27 +196,40 @@ describe('CalibrationPage - step indicator', () => {
 // ─── Video visibility per step ───
 
 describe('CalibrationPage - video visibility', () => {
-  it('does not show visible video on step 1', async () => {
+  it('video element is always in the DOM (stable ref for stream binding)', async () => {
     mockStep = 1
 
     await act(async () => {
       render(<CalibrationPage />)
     })
 
-    expect(screen.queryByTestId('calibration-video')).not.toBeInTheDocument()
+    // Video is always mounted to preserve stream binding across step transitions
+    expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
   })
 
-  it('shows visible video on step 2', async () => {
+  it('hides video container on step 1', async () => {
+    mockStep = 1
+
+    await act(async () => {
+      render(<CalibrationPage />)
+    })
+
+    const container = screen.getByTestId('calibration-video').closest('.calibration-preview-container')
+    expect(container).toHaveClass('calibration-preview-hidden')
+  })
+
+  it('shows video container on step 2', async () => {
     mockStep = 2
 
     await act(async () => {
       render(<CalibrationPage />)
     })
 
-    expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
+    const container = screen.getByTestId('calibration-video').closest('.calibration-preview-container')
+    expect(container).not.toHaveClass('calibration-preview-hidden')
   })
 
-  it('shows visible video on step 3', async () => {
+  it('shows video container on step 3', async () => {
     mockStep = 3
     mockProgress = 0.3
 
@@ -224,17 +237,19 @@ describe('CalibrationPage - video visibility', () => {
       render(<CalibrationPage />)
     })
 
-    expect(screen.getByTestId('calibration-video')).toBeInTheDocument()
+    const container = screen.getByTestId('calibration-video').closest('.calibration-preview-container')
+    expect(container).not.toHaveClass('calibration-preview-hidden')
   })
 
-  it('does not show visible video on step 4', async () => {
+  it('hides video container on step 4', async () => {
     mockStep = 4
 
     await act(async () => {
       render(<CalibrationPage />)
     })
 
-    expect(screen.queryByTestId('calibration-video')).not.toBeInTheDocument()
+    const container = screen.getByTestId('calibration-video').closest('.calibration-preview-container')
+    expect(container).toHaveClass('calibration-preview-hidden')
   })
 })
 

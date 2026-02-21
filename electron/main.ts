@@ -107,6 +107,14 @@ app.whenReady().then(() => {
 
   trayManager.updateStatus(appStatus)
 
+  // If calibration data exists and detection is enabled, pre-create
+  // the settings window (hidden) so the renderer's detection loop
+  // starts automatically without waiting for the user to open settings.
+  const savedSettings = configStore.getSettings()
+  if (savedSettings.calibration && savedSettings.detection.enabled) {
+    settingsWindow.ensureCreated()
+  }
+
   // Expose for E2E testing
   ;(global as Record<string, unknown>).__postret = {
     showSettings: () => settingsWindow?.show(),

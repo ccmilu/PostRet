@@ -122,36 +122,28 @@ export function CalibrationPage({ onComplete }: CalibrationPageProps) {
         </div>
       )}
 
-      {/* Video preview (shown in steps 2 & 3) */}
-      {showVideo && !cameraError && (
-        <div className="calibration-preview-container">
-          <video
-            ref={videoRef}
-            className="calibration-video"
-            autoPlay
-            playsInline
-            muted
-            data-testid="calibration-video"
-          />
+      {/* Single video element — always mounted to preserve stream binding.
+          Visible in steps 2 & 3, hidden (but still alive) in steps 1 & 4. */}
+      <div
+        className={`calibration-preview-container ${showVideo && !cameraError ? '' : 'calibration-preview-hidden'}`}
+      >
+        <video
+          ref={videoRef}
+          className="calibration-video"
+          autoPlay
+          playsInline
+          muted
+          data-testid="calibration-video"
+        />
+        {showVideo && !cameraError && (
           <PosePreview
             videoRef={videoRef}
             landmarks={wizard.landmarks}
             width={640}
             height={480}
           />
-        </div>
-      )}
-
-      {/* Hidden video element for steps 1 & 4 (keeps stream alive) */}
-      {!showVideo && (
-        <video
-          ref={videoRef}
-          className="calibration-video-hidden"
-          autoPlay
-          playsInline
-          muted
-        />
-      )}
+        )}
+      </div>
 
       {/* Step content */}
       {!cameraError && !wizard.error && (

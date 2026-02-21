@@ -52,6 +52,15 @@
   overflow: hidden;
 }
 
+.calibration-preview-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 /* --- PosePreview --- */
 
 .pose-preview {
