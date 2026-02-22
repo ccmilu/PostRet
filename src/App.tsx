@@ -66,6 +66,13 @@ export function App() {
     }
   }, [settings.calibration, detection.state, detection.updateCalibration])
 
+  // Sync custom threshold overrides from debug panel
+  useEffect(() => {
+    if (detection.state === 'detecting' || detection.state === 'paused') {
+      detection.updateCustomThresholds(settings.advanced.customThresholds)
+    }
+  }, [settings.advanced.customThresholds, detection.state, detection.updateCustomThresholds])
+
   const handleStartCalibration = useCallback(async () => {
     // Wait for camera release before navigating so CalibrationPage
     // can acquire the camera without a device-busy race condition.

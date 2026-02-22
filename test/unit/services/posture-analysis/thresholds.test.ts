@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_THRESHOLDS,
   getScaledThresholds,
+  type CustomThresholdOverrides,
 } from '../../../../src/services/posture-analysis/thresholds'
 
 describe('getScaledThresholds', () => {
@@ -48,6 +49,85 @@ describe('getScaledThresholds', () => {
   it('should clamp sensitivity above 1 to 1', () => {
     const result = getScaledThresholds(1.5)
     const expected = getScaledThresholds(1)
+
+    expect(result).toEqual(expected)
+  })
+})
+
+describe('getScaledThresholds with customOverrides', () => {
+  it('should override forwardHead and proportionally adjust FFR and NTE', () => {
+    const overrides: CustomThresholdOverrides = { forwardHead: 16 }
+    const result = getScaledThresholds(0.5, overrides)
+
+    // forwardHead = 16 (override), not scaled
+    expect(result.forwardHead).toBe(16)
+    // FFR/NTE scaled proportionally: default_ffr * (16 / 8)
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * 2)
+    expect(result.forwardHeadNTE).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadNTE * 2)
+    // Other values remain scaled normally
+    expect(result.headTilt).toBeCloseTo(DEFAULT_THRESHOLDS.headTilt * 1.25)
+    expect(result.shoulderAsymmetry).toBeCloseTo(DEFAULT_THRESHOLDS.shoulderAsymmetry * 1.25)
+  })
+
+  it('should override headTilt only', () => {
+    const overrides: CustomThresholdOverrides = { headTilt: 20 }
+    const result = getScaledThresholds(0.5, overrides)
+
+    expect(result.headTilt).toBe(20)
+    // forwardHead and FFR/NTE remain scaled normally
+    expect(result.forwardHead).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHead * 1.25)
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * 1.25)
+  })
+
+  it('should override shoulderAsymmetry only', () => {
+    const overrides: CustomThresholdOverrides = { shoulderAsymmetry: 5 }
+    const result = getScaledThresholds(0.5, overrides)
+
+    expect(result.shoulderAsymmetry).toBe(5)
+    expect(result.forwardHead).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHead * 1.25)
+  })
+
+  it('should use tooClose override as forwardHead when forwardHead is not set', () => {
+    const overrides: CustomThresholdOverrides = { tooClose: 12 }
+    const result = getScaledThresholds(0.5, overrides)
+
+    expect(result.forwardHead).toBe(12)
+    // FFR/NTE adjusted proportionally
+    expect(result.forwardHeadFFR).toBeCloseTo(DEFAULT_THRESHOLDS.forwardHeadFFR * (12 / 8))
+  })
+
+  it('should prefer forwardHead over tooClose when both set', () => {
+    const overrides: CustomThresholdOverrides = { forwardHead: 10, tooClose: 12 }
+    const result = getScaledThresholds(0.5, overrides)
+
+    expect(result.forwardHead).toBe(10)
+  })
+
+  it('should override multiple fields simultaneously', () => {
+    const overrides: CustomThresholdOverrides = {
+      forwardHead: 4,
+      headTilt: 6,
+      shoulderAsymmetry: 15,
+    }
+    const result = getScaledThresholds(0.5, overrides)
+
+    expect(result.forwardHead).toBe(4)
+    expect(result.headTilt).toBe(6)
+    expect(result.shoulderAsymmetry).toBe(15)
+    // slouch unchanged
+    expect(result.slouch).toBeCloseTo(DEFAULT_THRESHOLDS.slouch * 1.25)
+  })
+
+  it('should return normal scaled values when overrides is empty object', () => {
+    const result = getScaledThresholds(0.5, {})
+    const expected = getScaledThresholds(0.5)
+
+    expect(result).toEqual(expected)
+  })
+
+  it('should return normal scaled values when overrides is undefined', () => {
+    const result = getScaledThresholds(0.5, undefined)
+    const expected = getScaledThresholds(0.5)
 
     expect(result).toEqual(expected)
   })

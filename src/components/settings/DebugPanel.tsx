@@ -1,5 +1,6 @@
 import type { UsePostureDetectionReturn } from '@/hooks/usePostureDetection'
 import type { CalibrationData } from '@/types/settings'
+import { ThresholdTuner } from './ThresholdTuner'
 
 export interface DebugPanelProps {
   readonly detection: UsePostureDetectionReturn
@@ -192,6 +193,9 @@ export function DebugPanel({ detection, calibration, onClose }: DebugPanelProps)
           </div>
         </div>
       )}
+
+      {/* Threshold Tuning */}
+      <ThresholdTuner />
     </div>
   )
 }

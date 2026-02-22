@@ -1,9 +1,38 @@
 import { render, screen } from '@testing-library/react'
 import { DebugPanel } from '@/components/settings/DebugPanel'
+import { SettingsProvider } from '@/hooks/useSettings'
 import type { UsePostureDetectionReturn, DetectionState } from '@/hooks/usePostureDetection'
 import type { PostureAngles, AngleDeviations } from '@/services/posture-analysis/posture-types'
 import type { PostureStatus } from '@/types/ipc'
 import type { CalibrationData } from '@/types/settings'
+
+// Mock electronAPI for SettingsProvider
+beforeEach(() => {
+  Object.defineProperty(window, 'electronAPI', {
+    value: {
+      getSettings: vi.fn().mockResolvedValue({
+        detection: {
+          enabled: true,
+          intervalMs: 500,
+          sensitivity: 0.5,
+          rules: { forwardHead: true, slouch: false, headTilt: true, tooClose: true, shoulderAsymmetry: true },
+        },
+        reminder: { blur: true, sound: false, notification: true, delayMs: 5000, fadeOutDurationMs: 1500 },
+        calibration: null,
+        display: { selectedCamera: '', autoLaunch: false, ignorePeriods: [], weekendIgnore: false },
+        advanced: { debugMode: true },
+      }),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+      requestCameraPermission: vi.fn().mockResolvedValue('granted'),
+      onSettingsChanged: vi.fn(),
+      onPause: vi.fn(),
+      onResume: vi.fn(),
+      onStatusChange: vi.fn(),
+    },
+    writable: true,
+    configurable: true,
+  })
+})
 
 function createMockAngles(overrides?: Partial<PostureAngles>): PostureAngles {
   return {
@@ -69,8 +98,14 @@ function createMockDetection(overrides?: Partial<UsePostureDetectionReturn>): Us
     resume: vi.fn(),
     updateDetectionSettings: vi.fn(),
     updateCalibration: vi.fn(),
+    updateCamera: vi.fn(),
+    updateCustomThresholds: vi.fn(),
     ...overrides,
   }
+}
+
+function renderWithProvider(ui: React.ReactElement) {
+  return render(<SettingsProvider>{ui}</SettingsProvider>)
 }
 
 describe('DebugPanel', () => {
@@ -81,7 +116,7 @@ describe('DebugPanel', () => {
   }
 
   it('should render the debug panel with title', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-panel')).toBeInTheDocument()
     expect(screen.getByText('调试')).toBeInTheDocument()
@@ -89,7 +124,7 @@ describe('DebugPanel', () => {
 
   it('should render close button', () => {
     const onClose = vi.fn()
-    render(<DebugPanel {...defaultProps} onClose={onClose} />)
+    renderWithProvider(<DebugPanel {...defaultProps} onClose={onClose} />)
 
     const closeBtn = screen.getByTestId('debug-close-btn')
     expect(closeBtn).toBeInTheDocument()
@@ -99,19 +134,19 @@ describe('DebugPanel', () => {
   })
 
   it('should display detection state', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-detection-state')).toHaveTextContent('detecting')
   })
 
   it('should display confidence as percentage', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-detection-confidence')).toHaveTextContent('95%')
   })
 
   it('should display current angles', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     const anglesSection = screen.getByTestId('debug-angles-section')
     expect(anglesSection).toBeInTheDocument()
@@ -123,7 +158,7 @@ describe('DebugPanel', () => {
   })
 
   it('should display baseline values when calibration is provided', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-baseline-headForward')).toHaveTextContent('10.0')
     expect(screen.getByTestId('debug-baseline-headTilt')).toHaveTextContent('2.0')
@@ -132,7 +167,7 @@ describe('DebugPanel', () => {
   })
 
   it('should display deviation values', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-dev-headForward')).toHaveTextContent('5.5')
     expect(screen.getByTestId('debug-dev-headTilt')).toHaveTextContent('1.1')
@@ -147,20 +182,20 @@ describe('DebugPanel', () => {
       lastDeviations: null,
     })
 
-    render(<DebugPanel {...defaultProps} detection={detection} />)
+    renderWithProvider(<DebugPanel {...defaultProps} detection={detection} />)
 
     expect(screen.getByTestId('debug-detection-state')).toHaveTextContent('idle')
     expect(screen.getByTestId('debug-no-data')).toBeInTheDocument()
   })
 
   it('should show placeholder when calibration is null', () => {
-    render(<DebugPanel {...defaultProps} calibration={null} />)
+    renderWithProvider(<DebugPanel {...defaultProps} calibration={null} />)
 
     expect(screen.getByTestId('debug-no-calibration')).toBeInTheDocument()
   })
 
   it('should display posture status (good/bad)', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     expect(screen.getByTestId('debug-posture-status')).toHaveTextContent('良好')
   })
@@ -176,7 +211,7 @@ describe('DebugPanel', () => {
       }),
     })
 
-    render(<DebugPanel {...defaultProps} detection={detection} />)
+    renderWithProvider(<DebugPanel {...defaultProps} detection={detection} />)
 
     expect(screen.getByTestId('debug-posture-status')).toHaveTextContent('不良')
     expect(screen.getByTestId('debug-violations-list')).toBeInTheDocument()
@@ -184,7 +219,7 @@ describe('DebugPanel', () => {
   })
 
   it('should use monospace font for data values', () => {
-    render(<DebugPanel {...defaultProps} />)
+    renderWithProvider(<DebugPanel {...defaultProps} />)
 
     const panel = screen.getByTestId('debug-panel')
     expect(panel).toBeInTheDocument()
@@ -197,7 +232,7 @@ describe('DebugPanel', () => {
       lastStatus: createMockStatus({ timestamp }),
     })
 
-    render(<DebugPanel {...defaultProps} detection={detection} />)
+    renderWithProvider(<DebugPanel {...defaultProps} detection={detection} />)
 
     expect(screen.getByTestId('debug-last-timestamp')).toBeInTheDocument()
   })

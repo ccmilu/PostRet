@@ -6,6 +6,7 @@ import type {
   DetectionSettings,
   ReminderSettings,
   DisplaySettings,
+  AdvancedSettings,
 } from '@/types/settings'
 import { DEFAULT_SETTINGS } from '@/types/settings'
 
@@ -22,6 +23,9 @@ export interface UseSettingsReturn {
   ) => Promise<void>
   readonly updateDisplay: (
     partial: Partial<DisplaySettings>,
+  ) => Promise<void>
+  readonly updateAdvanced: (
+    partial: Partial<AdvancedSettings>,
   ) => Promise<void>
   readonly reloadSettings: () => Promise<void>
 }
@@ -178,6 +182,17 @@ function useSettingsInternal(): UseSettingsReturn {
     [updateSettings],
   )
 
+  const updateAdvanced = useCallback(
+    async (partial: Partial<AdvancedSettings>): Promise<void> => {
+      const nextAdvanced: AdvancedSettings = {
+        ...settingsRef.current.advanced,
+        ...partial,
+      }
+      await updateSettings({ advanced: nextAdvanced })
+    },
+    [updateSettings],
+  )
+
   return {
     settings,
     loading,
@@ -186,6 +201,7 @@ function useSettingsInternal(): UseSettingsReturn {
     updateDetection,
     updateReminder,
     updateDisplay,
+    updateAdvanced,
     reloadSettings,
   }
 }

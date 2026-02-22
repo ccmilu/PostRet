@@ -178,4 +178,49 @@ describe('createNotificationSender', () => {
     expect(result).toBe(true)
     expect(mockNotificationFactory).toHaveBeenCalledTimes(2)
   })
+
+  it('should dynamically update minInterval via updateMinInterval', () => {
+    const sender = createNotificationSender({
+      createNotification: mockNotificationFactory,
+      minIntervalMs: 30_000,
+    })
+
+    sender.send([makeViolation('FORWARD_HEAD')])
+    expect(sender.getMinInterval()).toBe(30_000)
+
+    // Shorten interval to 5s
+    sender.updateMinInterval(5_000)
+    expect(sender.getMinInterval()).toBe(5_000)
+
+    vi.advanceTimersByTime(5_000)
+
+    const result = sender.send([makeViolation('HEAD_TILT')])
+    expect(result).toBe(true)
+    expect(mockNotificationFactory).toHaveBeenCalledTimes(2)
+  })
+
+  it('should respect new longer interval after updateMinInterval', () => {
+    const sender = createNotificationSender({
+      createNotification: mockNotificationFactory,
+      minIntervalMs: 5_000,
+    })
+
+    sender.send([makeViolation('FORWARD_HEAD')])
+
+    // Lengthen interval to 60s
+    sender.updateMinInterval(60_000)
+
+    vi.advanceTimersByTime(30_000) // only 30s, not enough
+
+    const result = sender.send([makeViolation('HEAD_TILT')])
+    expect(result).toBe(false)
+  })
+
+  it('getMinInterval returns default when not explicitly set', () => {
+    const sender = createNotificationSender({
+      createNotification: mockNotificationFactory,
+    })
+
+    expect(sender.getMinInterval()).toBe(30_000)
+  })
 })

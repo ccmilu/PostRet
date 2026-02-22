@@ -3,7 +3,7 @@ import type { PoseDetector } from '@/services/pose-detection/pose-detector'
 import { createPoseDetector } from '@/services/pose-detection/pose-detector'
 import { PostureAnalyzer } from '@/services/posture-analysis/posture-analyzer'
 import type { PostureStatus } from '@/types/ipc'
-import type { CalibrationData, DetectionSettings } from '@/types/settings'
+import type { CalibrationData, DetectionSettings, CustomThresholds } from '@/types/settings'
 import type { PostureAngles, AngleDeviations } from '@/services/posture-analysis/posture-types'
 
 export type DetectionState =
@@ -29,6 +29,7 @@ export interface UsePostureDetectionReturn {
   readonly updateDetectionSettings: (detection: DetectionSettings) => void
   readonly updateCalibration: (calibration: CalibrationData) => void
   readonly updateCamera: (deviceId: string) => void
+  readonly updateCustomThresholds: (thresholds: CustomThresholds | undefined) => void
 }
 
 function hasElectronAPI(): boolean {
@@ -377,6 +378,10 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     [clearDetectionLoop, releaseCameraResources, startDetectionLoop],
   )
 
+  const updateCustomThresholds = useCallback((thresholds: CustomThresholds | undefined) => {
+    analyzerRef.current?.updateCustomThresholds(thresholds)
+  }, [])
+
   // Listen for pause/resume from main process (Tray menu)
   useEffect(() => {
     if (!hasElectronAPI()) {
@@ -429,5 +434,6 @@ export function usePostureDetection(): UsePostureDetectionReturn {
     updateDetectionSettings,
     updateCalibration,
     updateCamera,
+    updateCustomThresholds,
   }
 }

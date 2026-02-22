@@ -27,6 +27,7 @@ const mockAnalyzerInstance = {
   updateCalibration: vi.fn(),
   updateSensitivity: vi.fn(),
   updateRuleToggles: vi.fn(),
+  updateCustomThresholds: vi.fn(),
   reset: vi.fn(),
 }
 

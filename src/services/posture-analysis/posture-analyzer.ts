@@ -4,7 +4,7 @@ import type { PostureStatus } from '@/types/ipc'
 import type { CalibrationData, RuleToggles } from '@/types/settings'
 import type { AngleDeviations, PostureAngles } from './posture-types'
 import { extractPostureAngles } from './angle-calculator'
-import { getScaledThresholds } from './thresholds'
+import { getScaledThresholds, type CustomThresholdOverrides } from './thresholds'
 import { evaluateAllRules } from './posture-rules'
 import { EMAFilter, JitterFilter } from '@/utils/smoothing'
 import type { ScreenAngleReference } from '@/services/calibration/screen-angle-estimator'
@@ -129,6 +129,7 @@ export class PostureAnalyzer {
   private calibration: CalibrationData
   private sensitivity: number
   private ruleToggles: RuleToggles
+  private customThresholds: CustomThresholdOverrides | undefined
   private filters: SmoothingFilters
   private screenAngleReference: ScreenAngleReference | null
   private screenAngleReferences: readonly ScreenAngleCalibrationPoint[]
@@ -145,6 +146,7 @@ export class PostureAnalyzer {
     this.calibration = calibration
     this.sensitivity = sensitivity
     this.ruleToggles = ruleToggles
+    this.customThresholds = undefined
     this.filters = createFilters()
     this.screenAngleReference = options?.screenAngleReference ?? null
     this.screenAngleReferences = options?.screenAngleReferences
@@ -239,7 +241,7 @@ export class PostureAnalyzer {
     }
 
     // Step 5: Rule evaluation
-    const scaledThresholds = getScaledThresholds(this.sensitivity)
+    const scaledThresholds = getScaledThresholds(this.sensitivity, this.customThresholds)
     const violations = evaluateAllRules(deviations, scaledThresholds, this.ruleToggles)
 
     const isGood = violations.length === 0
@@ -307,6 +309,10 @@ export class PostureAnalyzer {
 
   updateRuleToggles(ruleToggles: RuleToggles): void {
     this.ruleToggles = ruleToggles
+  }
+
+  updateCustomThresholds(overrides: CustomThresholdOverrides | undefined): void {
+    this.customThresholds = overrides
   }
 
   setDebugMode(enabled: boolean): void {

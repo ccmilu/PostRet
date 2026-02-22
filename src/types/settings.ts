@@ -67,8 +67,17 @@ export interface IgnorePeriod {
   readonly end: string
 }
 
+export interface CustomThresholds {
+  readonly forwardHead?: number
+  readonly headTilt?: number
+  readonly tooClose?: number
+  readonly shoulderAsymmetry?: number
+}
+
 export interface AdvancedSettings {
   readonly debugMode: boolean
+  readonly customThresholds?: CustomThresholds
+  readonly notificationIntervalMs?: number
 }
 
 export const DEFAULT_SETTINGS: PostureSettings = {

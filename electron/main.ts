@@ -105,6 +105,12 @@ app.whenReady().then(() => {
       if (configStore && reminderManager) {
         reminderManager.updateConfig(buildReminderConfig(configStore))
         trayManager?.updateIgnorePeriodStatus(reminderManager.isInIgnorePeriod())
+
+        // Update notification throttle interval from advanced settings
+        const settings = configStore.getSettings()
+        if (settings.advanced.notificationIntervalMs !== undefined) {
+          notificationSender.updateMinInterval(settings.advanced.notificationIntervalMs)
+        }
       }
     },
   })

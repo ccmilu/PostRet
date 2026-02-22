@@ -16,6 +16,8 @@ export interface NotificationSenderOptions {
 
 export interface NotificationSender {
   send(violations: readonly PostureViolation[]): boolean
+  updateMinInterval(ms: number): void
+  getMinInterval(): number
 }
 
 const NOTIFICATION_MAP: Readonly<Record<string, NotificationContent>> = {
@@ -59,7 +61,7 @@ export function getNotificationContent(
 export function createNotificationSender(
   options: NotificationSenderOptions,
 ): NotificationSender {
-  const minInterval = options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS
+  let minInterval = options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS
   let lastSentTime = 0
 
   return {
@@ -74,6 +76,12 @@ export function createNotificationSender(
       notification.show()
       lastSentTime = now
       return true
+    },
+    updateMinInterval(ms: number): void {
+      minInterval = ms
+    },
+    getMinInterval(): number {
+      return minInterval
     },
   }
 }

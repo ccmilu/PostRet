@@ -19,6 +19,8 @@ const mockDetection: UsePostureDetectionReturn = {
   resume: vi.fn(),
   updateDetectionSettings: vi.fn(),
   updateCalibration: vi.fn(),
+  updateCamera: vi.fn(),
+  updateCustomThresholds: vi.fn(),
 }
 
 const MOCK_CALIBRATION: CalibrationData = {
